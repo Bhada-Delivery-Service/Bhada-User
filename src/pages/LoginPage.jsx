@@ -1,228 +1,172 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Phone, Shield, ArrowLeft, RefreshCw, Bike } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { authAPI } from '../services/api';
-import { useAuth } from '../context/AuthContext';
 import { sendOTP, verifyOTP } from '../services/firebase';
+import { useAuth } from '../context/AuthContext';
+import { useLang } from '../context/Langcontext';
 
-const STEP = { PHONE: 'phone', OTP: 'otp' };
+function normalizePhone(raw) {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return '+' + digits;
+  if (digits.length === 10) return '+91' + digits;
+  if (digits.length === 11 && digits.startsWith('0')) return '+91' + digits.slice(1);
+  return null;
+}
 
 export default function LoginPage() {
-  const [step, setStep] = useState(STEP.PHONE);
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [confirmationResult, setConfirmationResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
-  const otpRefs = useRef([]);
-  const { login } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (resendTimer > 0) {
-      const t = setTimeout(() => setResendTimer(r => r - 1), 1000);
-      return () => clearTimeout(t);
-    }
-  }, [resendTimer]);
-
-  const formatPhone = (raw) => {
-    const cleaned = raw.replace(/\D/g, '');
-    if (raw.startsWith('+')) return raw.replace(/\s/g, '');
-    if (cleaned.length === 10) return `+91${cleaned}`;
-    return `+${cleaned}`;
-  };
+  const { loginWithFirebase } = useAuth();
+  const { t, lang, changeLang } = useLang();
+  const navigate               = useNavigate();
+  const [step, setStep]        = useState('phone');
+  const [phone, setPhone]      = useState('');
+  const [otp, setOtp]          = useState('');
+  const [loading, setLoading]  = useState(false);
+  const [error, setError]      = useState('');
+  const confirmRef             = useRef(null);
 
   const handleSendOTP = async (e) => {
     e.preventDefault();
-    const formatted = formatPhone(phone);
-    if (formatted.length < 10) { toast.error('Enter a valid phone number'); return; }
+    setError('');
+    const normalized = normalizePhone(phone);
+    if (!normalized) { setError(t('invalidPhone')); return; }
     setLoading(true);
     try {
-      const result = await sendOTP(formatted);
-      setConfirmationResult(result);
-      setStep(STEP.OTP);
-      setResendTimer(30);
-      toast.success(`OTP sent to ${formatted}`);
+      confirmRef.current = await sendOTP(normalized, 'recaptcha-container');
+      setStep('otp');
     } catch (err) {
-      const msg = err.code === 'auth/invalid-phone-number' ? 'Invalid phone number'
-        : err.code === 'auth/too-many-requests' ? 'Too many attempts. Try later.'
-        : err.message || 'Failed to send OTP';
-      toast.error(msg);
+      console.error('[LoginPage] sendOTP error:', err);
+      setError(err.message || 'Failed to send OTP');
     } finally { setLoading(false); }
   };
 
   const handleVerifyOTP = async (e) => {
     e.preventDefault();
-    const otpStr = otp.join('');
-    if (otpStr.length !== 6) { toast.error('Enter the 6-digit OTP'); return; }
+    setError('');
+    if (otp.length !== 6) { setError(t('enterSixDigit')); return; }
+    if (!confirmRef.current) { setError(t('sessionExpired')); return; }
     setLoading(true);
     try {
-      const idToken = await verifyOTP(confirmationResult, otpStr);
-      const { data } = await authAPI.verifyFirebase(idToken);
-      await login(data.accessToken, data.refreshToken, data.user);
-      toast.success('Welcome back, Rider!');
-      navigate('/');
+      const idToken = await verifyOTP(confirmRef.current, otp);
+      await loginWithFirebase(idToken);
+      navigate('/', { replace: true });
     } catch (err) {
-      const msg = err.code === 'auth/invalid-verification-code' ? 'Incorrect OTP'
-        : err.code === 'auth/code-expired' ? 'OTP expired. Resend it.'
-        : err.response?.data?.message || 'Verification failed';
-      toast.error(msg);
+      console.error('[LoginPage] verify error:', err);
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Verification failed.';
+      setError(msg);
     } finally { setLoading(false); }
   };
 
-  const handleOtpChange = (index, value) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value.slice(-1);
-    setOtp(newOtp);
-    if (value && index < 5) otpRefs.current[index + 1]?.focus();
-  };
-
-  const handleOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) otpRefs.current[index - 1]?.focus();
-  };
-
-  const handleOtpPaste = (e) => {
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (pasted.length === 6) { setOtp(pasted.split('')); otpRefs.current[5]?.focus(); }
-  };
-
-  const handleResend = async () => {
-    setOtp(['', '', '', '', '', '']);
-    setLoading(true);
-    try {
-      const result = await sendOTP(formatPhone(phone));
-      setConfirmationResult(result);
-      setResendTimer(30);
-      toast.success('OTP resent!');
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
-    } catch { toast.error('Failed to resend'); }
-    finally { setLoading(false); }
-  };
+  const handleBack = () => { setStep('phone'); setOtp(''); setError(''); confirmRef.current = null; };
+  const displayPhone = normalizePhone(phone) || phone;
 
   return (
-    <div className="login-page">
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
-        backgroundSize: '44px 44px',
-        maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
-        WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
-      }} />
-
-      <div className="login-card" style={{ position: 'relative', zIndex: 1 }}>
-        {/* Logo */}
-        <div className="flex items-center gap-12 mb-20">
-          <div style={{
-            width: 50, height: 50,
-            background: 'var(--accent)',
-            borderRadius: 14,
-            display: 'grid', placeItems: 'center',
-            color: 'var(--bg-0)',
-          }}>
-            <Bike size={26} />
-          </div>
-          <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--text-0)', letterSpacing: '-0.03em' }}>Bhada</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-2)', letterSpacing: '0.1em' }}>RIDER APP</div>
-          </div>
+    <div style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: 24,
+      background: 'var(--bg-0)',
+    }}>
+      {/* Language switcher at top right */}
+      <div style={{ position: 'absolute', top: 20, right: 20 }}>
+        <div className="lang-toggle">
+          <button className={`lang-toggle-option ${lang === 'en' ? 'active' : ''}`} onClick={() => changeLang('en')}>EN</button>
+          <button className={`lang-toggle-option ${lang === 'hi' ? 'active' : ''}`} onClick={() => changeLang('hi')}>हि</button>
         </div>
+      </div>
 
-        {/* Step indicator */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 28 }}>
-          {[0, 1].map(i => (
-            <div key={i} style={{
-              height: 3, flex: 1, borderRadius: 99,
-              background: (step === STEP.OTP ? i <= 1 : i === 0) ? 'var(--accent)' : 'var(--bg-3)',
-              transition: 'background 0.3s ease',
-              boxShadow: (step === STEP.OTP ? i <= 1 : i === 0) ? '0 0 8px var(--accent-glow)' : 'none',
-            }} />
-          ))}
+      {/* Logo */}
+      <div style={{ marginBottom: 40, textAlign: 'center' }}>
+        <div style={{
+          width: 64, height: 64, background: 'var(--accent)',
+          borderRadius: 18, display: 'grid', placeItems: 'center',
+          fontSize: 32, fontFamily: 'var(--font-display)', fontWeight: 800,
+          color: 'var(--bg-0)', margin: '0 auto 14px',
+        }}>B</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>
+          Bhada
         </div>
+        <div style={{ color: 'var(--text-2)', fontSize: 13, marginTop: 4 }}>
+          Fast, reliable parcel delivery
+        </div>
+      </div>
 
-        {/* STEP 1: Phone */}
-        {step === STEP.PHONE && (
-          <div style={{ animation: 'slideUp 0.22s ease' }}>
-            <div id="recaptcha-container" />
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 6 }}>Sign In</h1>
-            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 28 }}>Enter your phone number to receive an OTP</p>
-            <form onSubmit={handleSendOTP}>
-              <div className="form-group">
-                <label className="form-label">Phone Number</label>
-                <div style={{ position: 'relative' }}>
-                  <Phone size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-2)', pointerEvents: 'none' }} />
-                  <input
-                    className="form-input"
-                    type="tel"
-                    placeholder="+91 98765 43210"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    style={{ paddingLeft: 38 }}
-                    autoFocus required
-                  />
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 6 }}>10-digit numbers get +91 automatically</div>
+      {/* Card */}
+      <div className="card" style={{ width: '100%', maxWidth: 380 }}>
+        <div
+          id="recaptcha-container"
+          style={{
+            marginBottom: step === 'phone' ? 16 : 0,
+            display: 'flex', justifyContent: 'center',
+            height: step === 'otp' ? 0 : undefined, overflow: 'hidden',
+          }}
+        />
+
+        {step === 'phone' ? (
+          <form onSubmit={handleSendOTP}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
+                {t('welcomeBack')}
               </div>
-              <button type="submit" className="btn btn-primary btn-lg" disabled={loading || !phone.trim()}>
-                <Phone size={15} />
-                {loading ? 'Sending OTP...' : 'Send OTP'}
-              </button>
-            </form>
-          </div>
-        )}
+              <div style={{ color: 'var(--text-2)', fontSize: 13 }}>{t('enterMobile')}</div>
+            </div>
 
-        {/* STEP 2: OTP */}
-        {step === STEP.OTP && (
-          <div style={{ animation: 'slideUp 0.22s ease' }}>
-            <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16, padding: '4px 0', color: 'var(--text-2)' }}
-              onClick={() => { setStep(STEP.PHONE); setOtp(['','','','','','']); }}>
-              <ArrowLeft size={14} /> Back
+            <div className="input-group" style={{ marginBottom: 16 }}>
+              <label className="input-label">{t('mobileNumber')}</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <span style={{
+                  position: 'absolute', left: 12, zIndex: 1,
+                  fontSize: 15, color: 'var(--text-1)',
+                  fontFamily: 'var(--font-mono)', pointerEvents: 'none', userSelect: 'none',
+                }}>+91</span>
+                <input
+                  className="input" type="tel" inputMode="numeric"
+                  placeholder="98765 43210" value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  style={{ paddingLeft: 44 }} autoFocus
+                />
+              </div>
+            </div>
+
+            {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 12, fontFamily: 'var(--font-mono)' }}>⚠ {error}</div>}
+
+            <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
+              {loading ? t('sending') : t('sendOtp')}
             </button>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 6 }}>Verify OTP</h1>
-            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 28 }}>
-              Sent to <strong style={{ color: 'var(--text-0)' }}>{formatPhone(phone)}</strong>
-            </p>
-            <form onSubmit={handleVerifyOTP}>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', margin: '0 0 28px' }} onPaste={handleOtpPaste}>
-                {otp.map((digit, i) => (
-                  <input key={i}
-                    ref={el => otpRefs.current[i] = el}
-                    type="text" inputMode="numeric" maxLength={1}
-                    value={digit}
-                    onChange={e => handleOtpChange(i, e.target.value)}
-                    onKeyDown={e => handleOtpKeyDown(i, e)}
-                    autoFocus={i === 0}
-                    style={{
-                      width: 46, height: 54, textAlign: 'center',
-                      fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 700,
-                      background: digit ? 'var(--accent-dim)' : 'var(--bg-0)',
-                      border: `1.5px solid ${digit ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: 10, color: digit ? 'var(--accent)' : 'var(--text-0)',
-                      outline: 'none', transition: 'all 0.15s ease', caretColor: 'var(--accent)',
-                    }}
-                  />
-                ))}
-              </div>
-              <button type="submit" className="btn btn-primary btn-lg" disabled={loading || otp.join('').length !== 6}>
-                <Shield size={15} />
-                {loading ? 'Verifying...' : 'Verify & Sign In'}
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOTP}>
+            <div style={{ marginBottom: 20 }}>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 12, padding: '4px 0' }} onClick={handleBack}>
+                {t('back')}
               </button>
-              <div style={{ textAlign: 'center', marginTop: 18 }}>
-                {resendTimer > 0 ? (
-                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                    Resend in <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{resendTimer}s</span>
-                  </span>
-                ) : (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleResend} disabled={loading}
-                    style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                    <RefreshCw size={12} /> Resend OTP
-                  </button>
-                )}
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
+                {t('enterOtp')}
               </div>
-            </form>
-          </div>
+              <div style={{ color: 'var(--text-2)', fontSize: 13 }}>
+                {t('sentTo')} <span style={{ color: 'var(--text-0)' }}>{displayPhone}</span>
+              </div>
+            </div>
+
+            <div className="input-group" style={{ marginBottom: 16 }}>
+              <label className="input-label">{t('sixDigitOtp')}</label>
+              <input
+                className="input" type="text" inputMode="numeric"
+                pattern="[0-9]*" maxLength={6} placeholder="000000" value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                style={{ fontSize: 22, letterSpacing: 8, textAlign: 'center', fontFamily: 'var(--font-mono)' }}
+                autoFocus
+              />
+            </div>
+
+            {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 12, fontFamily: 'var(--font-mono)' }}>⚠ {error}</div>}
+
+            <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
+              {loading ? t('verifying') : t('verifyLogin')}
+            </button>
+          </form>
         )}
+      </div>
+
+      <div style={{ color: 'var(--text-2)', fontSize: 11, marginTop: 24, textAlign: 'center' }}>
+        {t('terms')}
       </div>
     </div>
   );

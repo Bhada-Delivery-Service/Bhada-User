@@ -1,110 +1,99 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authAPI, ridersAPI } from '../services/api';
+import { auth } from '../services/firebase';
+import { authAPI } from '../services/api';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [rider, setRider] = useState(null);
-  const [onboardingStatus, setOnboardingStatus] = useState(null); // null = loading
+  const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch fresh rider data and onboarding status from server
-  const fetchRiderStatus = async (uid) => {
-  try {
-    const { data } = await ridersAPI.getById(uid);
-    const rd = data?.data || data;
-    if (rd) {
-      localStorage.setItem('rider', JSON.stringify(rd));
-      setRider(rd);
-      setOnboardingStatus(rd.onboardingStatus || 'NOT_SUBMITTED');
-    }
-  } catch (err) {
-    // 404 = new rider, profile not created yet → treat as fresh start
-    if (err.response?.status === 404) {
-      setRider(null);
-      setOnboardingStatus('NOT_SUBMITTED');
-    } else {
-      // Other errors → fall back to cached value
-      const storedRider = localStorage.getItem('rider');
-      if (storedRider) {
-        const rd = JSON.parse(storedRider);
-        setRider(rd);
-        setOnboardingStatus(rd.onboardingStatus || 'NOT_SUBMITTED');
-      } else {
-        setOnboardingStatus('NOT_SUBMITTED');
-      }
-    }
-  }
-};
-
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
+    const token      = localStorage.getItem('accessToken');
     const storedUser = localStorage.getItem('user');
-    const storedRider = localStorage.getItem('rider');
 
-    if (token && storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      // Set cached rider immediately so UI doesn't flash
-      if (storedRider) {
-        const rd = JSON.parse(storedRider);
-        setRider(rd);
-        setOnboardingStatus(rd.onboardingStatus || 'NOT_SUBMITTED');
-      }
-      // Verify session then refresh rider status from server
-      authAPI.checkSession()
-        .then(({ data }) => {
-          if (!data.valid) {
-            logout();
-          } else {
-            return fetchRiderStatus(parsedUser.uid);
-          }
-        })
-        .catch(logout)
-        .finally(() => setLoading(false));
-    } else {
+    if (!token || !storedUser) {
+      // No token at all — go straight to login screen, no network call needed
       setLoading(false);
+      return;
     }
+
+    // KEY PATTERN (from rider app):
+    // 1. Restore user from localStorage IMMEDIATELY so the app never flashes
+    //    the login screen on refresh while the network call is in flight.
+    // 2. Then validate the session in the background.
+    // 3. Only logout if the server explicitly says the token is invalid (401
+    //    or data.valid === false). Any other error (network down, 5xx) keeps
+    //    the user logged in — the token might still be perfectly valid.
+    const parsedUser = JSON.parse(storedUser);
+    setUser(parsedUser);
+
+    authAPI.checkSession()
+      .then(({ data }) => {
+        if (data.valid === false) {
+          // Server explicitly says session is invalid → force logout
+          logout();
+        } else {
+          // Session valid — optionally refresh user data from server response
+          const freshUser = data.data || data.user;
+          if (freshUser) {
+            setUser(freshUser);
+            localStorage.setItem('user', JSON.stringify(freshUser));
+          }
+        }
+      })
+      .catch((err) => {
+        // Only logout on 401 — token is genuinely rejected by the server.
+        // Network errors, 5xx, timeouts: keep the user logged in.
+        if (err?.response?.status === 401) {
+          logout();
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const login = async (accessToken, refreshToken, userData) => {
+  // Listen for token refresh events (from api.js interceptor)
+  useEffect(() => {
+    const handler = () => {
+      authAPI.checkSession()
+        .then(({ data }) => {
+          const freshUser = data.data || data.user;
+          if (freshUser) {
+            setUser(freshUser);
+            localStorage.setItem('user', JSON.stringify(freshUser));
+          }
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('tokenRefreshed', handler);
+    return () => window.removeEventListener('tokenRefreshed', handler);
+  }, []);
+
+  const loginWithFirebase = async (idToken) => {
+    const { data } = await authAPI.verifyFirebase(idToken);
+    const { accessToken, refreshToken, user: u } = data.data ?? data;
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-    // Always fetch fresh onboarding status right after login
-    await fetchRiderStatus(userData.uid);
-  };
-
-  const updateRider = (riderData) => {
-    localStorage.setItem('rider', JSON.stringify(riderData));
-    setRider(riderData);
-    setOnboardingStatus(riderData.onboardingStatus || 'NOT_SUBMITTED');
-  };
-
-  const refreshOnboardingStatus = async () => {
-    if (user?.uid) await fetchRiderStatus(user.uid);
+    localStorage.setItem('user', JSON.stringify(u));  // ← persist user
+    setUser(u);
+    return u;
   };
 
   const logout = () => {
+    try { auth.signOut(); } catch (_) {}
     localStorage.clear();
     setUser(null);
-    setRider(null);
-    setOnboardingStatus(null);
   };
 
-  const isApproved = onboardingStatus === 'APPROVED';
-
   return (
-    <AuthContext.Provider value={{
-      user, rider, login, logout, loading,
-      updateRider, onboardingStatus, isApproved,
-      refreshOnboardingStatus,
-    }}>
+    <AuthContext.Provider value={{ user, loading, loginWithFirebase, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be inside AuthProvider');
+  return ctx;
+};

@@ -26,8 +26,12 @@ export const sendOTP = async (phoneNumber, containerId = 'recaptcha-container') 
   const container = document.getElementById(containerId);
   if (!container) throw new Error(`reCAPTCHA container #${containerId} not found`);
 
+  // Use 'normal' (visible checkbox) reCAPTCHA — this avoids auth/invalid-app-credential
+  // which happens with invisible reCAPTCHA when app domain is not whitelisted in Firebase.
+  // For test/dev: add localhost to Firebase Console → Authentication → Settings → Authorized Domains
+  // For test phone numbers: add them in Firebase Console → Authentication → Sign-in method → Phone → Test phone numbers
   window.recaptchaVerifier = new RecaptchaVerifier(auth, container, {
-    size: 'invisible',
+    size: 'normal',
     callback: () => {},
     'expired-callback': clearRecaptcha,
   });

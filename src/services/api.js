@@ -7,14 +7,12 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Token refresh
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -26,6 +24,7 @@ api.interceptors.response.use(
         const { data } = await axios.post(`${BASE_URL}/auth/refresh-token`, { refreshToken });
         localStorage.setItem('accessToken', data.accessToken);
         original.headers.Authorization = `Bearer ${data.accessToken}`;
+        window.dispatchEvent(new Event('tokenRefreshed'));
         return api(original);
       } catch {
         localStorage.clear();
@@ -36,51 +35,87 @@ api.interceptors.response.use(
   }
 );
 
-// ─── Auth ──────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
-  verifyFirebase: (idToken) => api.post('/auth/verify-firebase', { idToken, role: 'rider' }),
-  refreshToken: (refreshToken) => api.post('/auth/refresh-token', { refreshToken }),
-  checkSession: () => api.get('/auth/check-session'),
+  verifyFirebase: (idToken) => api.post('/auth/verify-firebase', { idToken, role: 'user' }),
+  refreshToken:   (token)   => api.post('/auth/refresh-token', { refreshToken: token }),
+  checkSession:   ()        => api.get('/auth/check-session'),
 };
 
-// ─── Riders ────────────────────────────────────────────────────────────────
-export const ridersAPI = {
-  getById: (id) => api.get(`/riders/${id}`),
-  updateProfile: (id, data) => api.put(`/riders/${id}/profile`, data),
-  submitVehicle: (id, data) => api.post(`/riders/${id}/vehicle`, data),
-  submitKyc: (id, data) => api.post(`/riders/${id}/kyc`, data),
-  submitOnboarding: (id) => api.post(`/riders/${id}/onboarding`),
-  revokeOnboarding: (id) => api.delete(`/riders/${id}/onboarding`),
-  updateOnboarding: (id, data) => api.put(`/riders/${id}/onboarding`, data),
-  getOnboardingStatus: (id) => api.get(`/riders/${id}/onboarding/status`),
-  goOnline: (id) => api.put(`/riders/${id}/online`),
-  goOffline: (id) => api.put(`/riders/${id}/offline`),
-  takeBreak: (id) => api.put(`/riders/${id}/break`),
-  resume: (id) => api.put(`/riders/${id}/resume`),
-  getRoutes: (id) => api.get(`/riders/${id}/routes`),
-  addRoute: (id, data) => api.post(`/riders/${id}/routes`, data),
-  updateRoute: (id, routeId, data) => api.put(`/riders/${id}/routes/${routeId}`, data),
-  deleteRoute: (id, routeId) => api.delete(`/riders/${id}/routes/${routeId}`),
-  getAreas: (id) => api.get(`/riders/${id}/areas`),
-  addArea: (id, data) => api.post(`/riders/${id}/areas`, data),
-  updateArea: (id, areaId, data) => api.put(`/riders/${id}/areas/${areaId}`, data),
-  deleteArea: (id, areaId) => api.delete(`/riders/${id}/areas/${areaId}`),
-  getPerformance: (id) => api.get(`/riders/${id}/performance`),
-  completeDelivery: (id) => api.put(`/riders/${id}/delivery/complete`),
-};
-
-// ─── Orders ────────────────────────────────────────────────────────────────
+// ── Orders ────────────────────────────────────────────────────────────────────
 export const ordersAPI = {
-  getAvailable: () => api.get('/orders/available'),
-  getById: (id) => api.get(`/orders/${id}`),
-  accept: (id) => api.put(`/orders/${id}/accept`),
-  cancelDelivery: (id, reason) => api.put(`/orders/${id}/cancel-delivery`, { reason }),
-  handover: (id, pickupOtp) => api.post(`/orders/${id}/handover`, { pickupOtp }),
-  deliver: (id, dropOtp) => api.post(`/orders/${id}/deliver`, { dropOtp }),
+  getMyOrders:       ()            => api.get('/orders/my'),
+  getById:           (id)          => api.get(`/orders/${id}`),
+  checkAvailability: (params)      => api.get('/orders/check-availability', { params }),
+  getReceiverInfo:   (phone)       => api.get('/orders/receiver-info', { params: { phone } }),
+
+  // NEW: Step 3→4 — create draft + billing after items filled
+  prepare:           (data)        => api.post('/orders/prepare', data),
+
+  // NEW: Finalise and place an existing draft (COD or post-payment)
+  placeDraft:        (id, data)    => api.post(`/orders/${id}/place`, data),
+
+  // Legacy single-step place (kept for compat)
+  place:             (data)        => api.post('/orders', data),
+
+  saveDraft:         (data)        => api.post('/orders/draft', data),
+  cancel:            (id, reason)  => api.put(`/orders/${id}/cancel`, { reason }),
+  markReady:         (id)          => api.put(`/orders/${id}/ready`),
+  applyOffer:        (id, code)    => api.post(`/orders/${id}/offer`, { offerCode: code }),
+  removeOffer:       (id, offerId) => api.delete(`/orders/${id}/offer/${offerId}`),
+  getOffers:         (id)          => api.get(`/orders/${id}/offers`),
+  handover:          (id, otp)     => api.post(`/orders/${id}/handover`, { pickupOtp: otp }),
 };
 
-// ─── File Upload ───────────────────────────────────────────────────────────
+// ── Payments (Razorpay — v2.3.0) ──────────────────────────────────────────────
+export const paymentsAPI = {
+  initiate:  (data)       => api.post('/payments/initiate', data),
+  verify:    (pid, data)  => api.post(`/payments/${pid}/verify`, data),
+  getStatus: (pid)        => api.get(`/payments/${pid}/status`),
+  refund:    (pid, data)  => api.post(`/payments/${pid}/refund`, data),
+};
+
+// ── Pricing ───────────────────────────────────────────────────────────────────
+export const pricingAPI = {
+  estimate:  (distanceKm, category) => api.post('/pricing/estimate', { distanceKm, category }),
+  getActive: ()                     => api.get('/pricing/active'),
+};
+
+// ── Notifications (v2.3.0) ────────────────────────────────────────────────────
+export const notificationsAPI = {
+  getAll:      (limit = 30) => api.get(`/notifications?limit=${limit}`),
+  getCount:    ()            => api.get('/notifications/count'),
+  markSeen:    (id)          => api.put(`/notifications/${id}/seen`),
+  markAllSeen: ()            => api.put('/notifications/seen-all'),
+};
+
+// ── Addresses ─────────────────────────────────────────────────────────────────
+export const addressesAPI = {
+  getAll:            ()      => api.get('/addresses'),
+  create:            (data)  => api.post('/addresses', data),
+  update:            (id, d) => api.put(`/addresses/${id}`, d),
+  remove:            (id)    => api.delete(`/addresses/${id}`),
+  setPreferredPickup:(id)    => api.put(`/addresses/${id}/preferred-pickup`),
+  setPreferredDrop:  (id)    => api.put(`/addresses/${id}/preferred-drop`),
+};
+
+// ── Disputes ──────────────────────────────────────────────────────────────────
+export const disputesAPI = {
+  getMyDisputes: ()         => api.get('/disputes/my'),
+  getById:       (id)       => api.get(`/disputes/${id}`),
+  raise:         (data)     => api.post('/disputes', data),
+  addEvidence:   (id, data) => api.post(`/disputes/${id}/evidence`, data),
+};
+
+// ── Offers ────────────────────────────────────────────────────────────────────
+export const offersAPI = {
+  getAll: () => api.get('/offers'),
+};
+
+// ── Files ─────────────────────────────────────────────────────────────────────
 export const filesAPI = {
+  // Upload a single file; returns { url, filename }
+  // Pass a File object from <input type="file">
   upload: (file) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -90,12 +125,9 @@ export const filesAPI = {
   },
 };
 
-// ─── Notifications ─────────────────────────────────────────────────────────
-export const notificationsAPI = {
-  getAll:      (limit = 30) => api.get(`/notifications?limit=${limit}`),
-  getCount:    ()           => api.get('/notifications/count'),
-  markSeen:    (id)         => api.put(`/notifications/${id}/seen`),
-  markAllSeen: ()           => api.put('/notifications/seen-all'),
-};
-
 export default api;
+// ── Profile ───────────────────────────────────────────────────────────────────
+export const profileAPI = {
+  getMe:    ()     => api.get('/auth/me'),
+  updateMe: (data) => api.put('/auth/me', data),
+};

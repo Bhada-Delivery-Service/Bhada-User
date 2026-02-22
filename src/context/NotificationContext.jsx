@@ -1,122 +1,60 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import toast from 'react-hot-toast';
 import { notificationsAPI } from '../services/api';
-import { connectSocket, disconnectSocket } from '../services/socketService';
+import { useAuth } from './AuthContext';
 
 const NotificationContext = createContext(null);
 
-const NOTIF_EMOJI = {
-  ONBOARDING_SUBMITTED:  '📋',
-  ONBOARDING_APPROVED:   '🎉',
-  ONBOARDING_REJECTED:   '❌',
-  KYC_SUBMITTED:         '📄',
-  KYC_APPROVED:          '✅',
-  KYC_REJECTED:          '❌',
-  ORDER_PLACED:          '📦',
-  ORDER_ACCEPTED:        '🛵',
-  ORDER_DISPATCHED:      '🚀',
-  ORDER_DELIVERED:       '✅',
-  ORDER_CANCELLED:       '🚫',
-  ORDER_AVAILABLE:       '📦',
-  DISPUTE_RAISED:        '⚠️',
-  DISPUTE_RESOLVED:      '✅',
-  PAYMENT_SUCCESS:       '💳',
-  PAYMENT_REFUNDED:      '💸',
-};
+export function NotificationProvider({ children }) {
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState([]);
+  const [unseenCount,   setUnseenCount]   = useState(0);
+  const [loading,       setLoading]       = useState(false);
+  const [drawerOpen,    setDrawerOpen]    = useState(false);
+  const pollRef = useRef(null);
 
-export function NotificationProvider({ children, accessToken, onOnboardingApproved }) {
-  const [notifications, setNotifications]   = useState([]);
-  const [unseenCount,   setUnseenCount]     = useState(0);
-  const [loading,       setLoading]         = useState(false);
-  const [drawerOpen,    setDrawerOpen]      = useState(false);
-  const socketRef = useRef(null);
+  // Lightweight poll — just count, not full list
+  const fetchCount = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data } = await notificationsAPI.getCount();
+      setUnseenCount(data.unseen ?? 0);
+    } catch {}
+  }, [user]);
 
-  // ── Fetch from REST ──────────────────────────────────────────────────────
+  // Full list — only fetched when drawer opens or user refreshes
   const fetchNotifications = useCallback(async () => {
-    if (!accessToken) return;
+    if (!user) return;
     setLoading(true);
     try {
-      const { data } = await notificationsAPI.getAll(30);
-      setNotifications(data.data || []);
-      setUnseenCount(data.unseen ?? 0);
-    } catch (e) {
-      console.error('[Notif:Rider] fetch failed', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken]);
+      const { data } = await notificationsAPI.getAll(50);
+      const list = data.data || [];
+      setNotifications(list);
+      setUnseenCount(list.filter(n => !n.seen).length);
+    } catch {}
+    finally { setLoading(false); }
+  }, [user]);
 
-  // ── Socket setup ─────────────────────────────────────────────────────────
+  // Poll unseen count every 30s
   useEffect(() => {
-    if (!accessToken) return;
+    if (!user) { setNotifications([]); setUnseenCount(0); return; }
+    fetchCount();
+    pollRef.current = setInterval(fetchCount, 30_000);
+    return () => clearInterval(pollRef.current);
+  }, [user, fetchCount]);
 
-    // BUG FIX: Disconnect any stale socket before creating a new one.
-    // Previously, if accessToken changed (e.g. after token refresh), the old
-    // socket kept running and the new one would silently fail to connect.
-    disconnectSocket();
-
-    const socket = connectSocket(accessToken);
-    socketRef.current = socket;
-
-    socket.on('notification:new', (n) => {
-      // Persist DB-backed notifications in local state
-      if (n.id) {
-        setNotifications(prev => [n, ...prev]);
-        setUnseenCount(prev => prev + 1);
-      }
-
-      // Special case: onboarding approved → trigger re-fetch of rider status
-      if (n.type === 'ONBOARDING_APPROVED') {
-        onOnboardingApproved?.();
-      }
-
-      // Show toast for all events
-      const emoji = NOTIF_EMOJI[n.type] || '🔔';
-      toast(`${emoji}  ${n.title}\n${n.body}`, {
-        duration: 6000,
-        style: {
-          background: '#131929',
-          color: '#f0f4ff',
-          border: '1px solid rgba(255,255,255,0.1)',
-          fontSize: '13px',
-          maxWidth: '340px',
-          whiteSpace: 'pre-line',
-          lineHeight: 1.5,
-        },
-      });
-    });
-
-    socket.on('notification:count', ({ unseen }) => {
-      setUnseenCount(unseen);
-    });
-
+  const openDrawer = useCallback(() => {
+    setDrawerOpen(true);
     fetchNotifications();
+  }, [fetchNotifications]);
 
-    return () => {
-      // BUG FIX: clean up specific listeners (don't destroy socket here —
-      // that's handled by the accessToken=null cleanup effect below)
-      socket.off('notification:new');
-      socket.off('notification:count');
-    };
-  }, [accessToken, fetchNotifications, onOnboardingApproved]);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
-  // Cleanup on logout
-  useEffect(() => {
-    if (!accessToken) {
-      disconnectSocket();
-      setNotifications([]);
-      setUnseenCount(0);
-      setDrawerOpen(false);
-    }
-  }, [accessToken]);
-
-  // ── Actions ──────────────────────────────────────────────────────────────
   const markSeen = useCallback(async (id) => {
     try {
       await notificationsAPI.markSeen(id);
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, seen: true } : n));
       setUnseenCount(prev => Math.max(0, prev - 1));
-    } catch (e) { console.error('[Notif:Rider] markSeen failed', e); }
+    } catch {}
   }, []);
 
   const markAllSeen = useCallback(async () => {
@@ -124,24 +62,21 @@ export function NotificationProvider({ children, accessToken, onOnboardingApprov
       await notificationsAPI.markAllSeen();
       setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
       setUnseenCount(0);
-    } catch (e) { console.error('[Notif:Rider] markAllSeen failed', e); }
+    } catch {}
   }, []);
-
-  const openDrawer  = useCallback(() => setDrawerOpen(true),  []);
-  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   return (
     <NotificationContext.Provider value={{
       notifications, unseenCount, loading, drawerOpen,
-      fetchNotifications, markSeen, markAllSeen, openDrawer, closeDrawer,
+      openDrawer, closeDrawer, markSeen, markAllSeen, fetchNotifications,
     }}>
       {children}
     </NotificationContext.Provider>
   );
 }
 
-export const useNotifications = () => {
+export function useNotifications() {
   const ctx = useContext(NotificationContext);
   if (!ctx) throw new Error('useNotifications must be inside NotificationProvider');
   return ctx;
-};
+}

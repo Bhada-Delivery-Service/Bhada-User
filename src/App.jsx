@@ -1,104 +1,151 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Home, Package, User, Bell, AlertCircle, Plus } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { NotificationProvider } from './context/NotificationContext';
-import Layout from './components/Layout';
+import { NotificationProvider, useNotifications } from './context/NotificationContext';
+import { ThemeProvider } from './context/Themecontext';
+import { LangProvider, useLang } from './context/Langcontext';
+import NotificationDrawer from './components/NotificationDrawer';
 import LoginPage from './pages/LoginPage';
-import OnboardingGatePage from './pages/OnboardingGatePage';
-import DashboardPage from './pages/DashboardPage';
-import OrdersPage from './pages/OrdersPage';
+import HomePage from './pages/HomePage';
+import { OrdersPage, OrderDetailPage } from './pages/OrdersPage';
+import PlaceOrderPage from './pages/PlaceOrderPage';
 import ProfilePage from './pages/ProfilePage';
-import RoutesAreasPage from './pages/RoutesAreasPage';
+import AddressesPage from './pages/AddressesPage';
+import DisputesPage, { RaiseDisputePage, DisputeDetailPage } from './pages/DisputesPage';
 
-const Spinner = () => (
-  <div className="loading-center" style={{ minHeight: '100vh' }}>
-    <div className="loader" />
-  </div>
-);
+function Loading() {
+  return (
+    <div style={{ display:'grid', placeItems:'center', height:'100vh', background:'var(--bg-base)' }}>
+      <div className="spinner spinner-lg" />
+    </div>
+  );
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <Spinner />;
-  return user ? children : <Navigate to="/login" replace />;
+  if (loading) return <Loading />;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
 }
 
-function PublicRoute({ children }) {
+function ProtectedWrapper({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <Spinner />;
-  return user ? <Navigate to="/" replace /> : children;
-}
-
-function ApprovedRoute({ children }) {
-  const { user, loading, isApproved } = useAuth();
-  if (loading) return <Spinner />;
+  if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" replace />;
-  if (!isApproved) return <Navigate to="/onboarding" replace />;
   return children;
 }
 
-function OnboardingRoute({ children }) {
-  const { user, loading, isApproved } = useAuth();
-  if (loading) return <Spinner />;
-  if (!user) return <Navigate to="/login" replace />;
-  if (isApproved) return <Navigate to="/" replace />;
-  return children;
+function NotificationBell() {
+  const { unseenCount, openDrawer } = useNotifications();
+  return (
+    <button className="nav-action" onClick={openDrawer}>
+      <Bell size={17} />
+      {unseenCount > 0 && (
+        <span className="nav-badge">{unseenCount > 9 ? '9+' : unseenCount}</span>
+      )}
+    </button>
+  );
 }
 
-// Inner app — has access to both auth and notification context
-function AppWithNotifications() {
-  const { user, refreshOnboardingStatus } = useAuth();
-  const accessToken = localStorage.getItem('accessToken');
+function AppShell() {
+  const { user } = useAuth();
+  const { t } = useLang();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  if (!user) return null;
+
+  const navItems = [
+    { path: '/',         icon: Home,         label: t('home')     },
+    { path: '/orders',   icon: Package,      label: t('orders')   },
+    { path: '/disputes', icon: AlertCircle,  label: t('disputes') },
+    { path: '/profile',  icon: User,         label: t('profile')  },
+  ];
+
+  const isActive = (path) =>
+    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+
+  const hideChrome =
+    location.pathname.startsWith('/place-order') ||
+    location.pathname.startsWith('/login') ||
+    /^\/orders\/.+/.test(location.pathname) ||
+    /^\/disputes\/(raise|.{10,})/.test(location.pathname) ||
+    location.pathname.startsWith('/addresses');
 
   return (
-    <NotificationProvider
-      accessToken={user ? accessToken : null}
-      // When backend pushes ONBOARDING_APPROVED socket event,
-      // re-fetch rider status so the gate unlocks instantly
-      onOnboardingApproved={refreshOnboardingStatus}
-    >
-      <Routes>
-        {/* Public */}
-        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+    <div className="app-shell">
+      {!hideChrome && (
+        <nav className="top-nav">
+          <div className="nav-brand">Bhada</div>
+          <NotificationBell />
+          <button
+            className="nav-action nav-action-primary"
+            onClick={() => navigate('/place-order')}
+            title="New Order"
+          >
+            <Plus size={18} />
+          </button>
+        </nav>
+      )}
 
-        {/* Onboarding gate */}
-        <Route path="/onboarding" element={<OnboardingRoute><OnboardingGatePage /></OnboardingRoute>} />
+      <div className={hideChrome ? '' : 'page-content'}>
+        <Routes>
+          <Route path="/"                   element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/orders"             element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+          <Route path="/orders/:id"         element={<ProtectedRoute><OrderDetailPage /></ProtectedRoute>} />
+          <Route path="/place-order"        element={<ProtectedRoute><PlaceOrderPage /></ProtectedRoute>} />
+          <Route path="/profile"            element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/addresses"          element={<ProtectedRoute><AddressesPage /></ProtectedRoute>} />
+          <Route path="/disputes"           element={<ProtectedRoute><DisputesPage /></ProtectedRoute>} />
+          <Route path="/disputes/raise"     element={<ProtectedRoute><RaiseDisputePage /></ProtectedRoute>} />
+          <Route path="/disputes/:id"       element={<ProtectedRoute><DisputeDetailPage /></ProtectedRoute>} />
+          <Route path="/login"              element={<LoginPage />} />
+          <Route path="*"                   element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
 
-        {/* Main app — approved riders only */}
-        <Route path="/" element={<ApprovedRoute><Layout /></ApprovedRoute>}>
-          <Route index element={<DashboardPage />} />
-          <Route path="orders"  element={<OrdersPage />} />
-          <Route path="routes"  element={<RoutesAreasPage />} />
-          <Route path="profile" element={<ProfilePage />} />
-        </Route>
+      {!hideChrome && (
+        <nav className="bottom-tabs">
+          {navItems.map(({ path, icon: Icon, label }) => (
+            <div
+              key={path}
+              className={`tab-item ${isActive(path) ? 'active' : ''}`}
+              onClick={() => navigate(path)}
+            >
+              <div className="tab-icon-wrap">
+                <Icon size={19} />
+              </div>
+              {label}
+            </div>
+          ))}
+        </nav>
+      )}
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </NotificationProvider>
+      <NotificationDrawer />
+    </div>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            style: {
-              background: '#131929',
-              color: '#f0f4ff',
-              border: '1px solid rgba(255,255,255,0.07)',
-              fontFamily: "'Inter', sans-serif",
-              fontSize: '13.5px',
-              maxWidth: '360px',
-            },
-            success: { iconTheme: { primary: '#00e5a0', secondary: '#05080f' } },
-            error:   { iconTheme: { primary: '#ff4d6d', secondary: '#05080f' } },
-          }}
-        />
-        <AppWithNotifications />
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <LangProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <NotificationProvider>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="*" element={
+                  <ProtectedWrapper>
+                    <AppShell />
+                  </ProtectedWrapper>
+                } />
+              </Routes>
+            </NotificationProvider>
+          </BrowserRouter>
+        </AuthProvider>
+      </LangProvider>
+    </ThemeProvider>
   );
 }
