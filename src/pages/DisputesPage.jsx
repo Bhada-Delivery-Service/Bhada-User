@@ -1,21 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, RefreshCw, ChevronRight, AlertTriangle, Upload, X, Check } from 'lucide-react';
+import { ArrowLeft, Plus, RefreshCw, ChevronRight, AlertTriangle, X, Check, MessageCircle } from 'lucide-react';
 import { disputesAPI, ordersAPI } from '../services/api';
 
+// ─── Must match server DisputeReason enum exactly ─────────────────────────────
 const REASONS = [
-  'ITEM_DAMAGED','ITEM_MISSING','WRONG_ITEM_DELIVERED',
-  'LATE_DELIVERY','RIDER_BEHAVIOUR','PAYMENT_ISSUE','OTHER',
+  'ITEM_DAMAGED',
+  'ITEM_LOST',          // was ITEM_MISSING — doesn't exist in server enum
+  'WRONG_DELIVERY',     // was WRONG_ITEM_DELIVERED — doesn't exist in server enum
+  'LATE_DELIVERY',
+  'RIDER_BEHAVIOUR',
+  'PAYMENT_ISSUE',
+  'OTHER',
 ];
 
 const REASON_LABELS = {
-  ITEM_DAMAGED: 'Item Damaged',
-  ITEM_MISSING: 'Item Missing',
-  WRONG_ITEM_DELIVERED: 'Wrong Item',
-  LATE_DELIVERY: 'Late Delivery',
+  ITEM_DAMAGED:    'Item Damaged',
+  ITEM_LOST:       'Item Missing',
+  WRONG_DELIVERY:  'Wrong Item Delivered',
+  LATE_DELIVERY:   'Late Delivery',
   RIDER_BEHAVIOUR: 'Rider Behaviour',
-  PAYMENT_ISSUE: 'Payment Issue',
-  OTHER: 'Other',
+  PAYMENT_ISSUE:   'Payment Issue',
+  OTHER:           'Other',
 };
 
 const STATUS_STYLE = {
@@ -134,10 +140,10 @@ export function RaiseDisputePage() {
 
   const submit = async () => {
     if (!orderId) { setError('Please select an order'); return; }
-    if (!description.trim()) { setError('Please describe the issue'); return; }
+    if (description.trim().length < 10) { setError('Please describe the issue in at least 10 characters'); return; }
     setSubmitting(true); setError('');
     try {
-      await disputesAPI.raise({ orderId, reason, description });
+      await disputesAPI.raise({ orderId, reason, description: description.trim() });
       navigate('/disputes', { replace: true });
     } catch (e) {
       setError(e.response?.data?.message || e.message || 'Failed to raise dispute');
@@ -193,7 +199,12 @@ export function RaiseDisputePage() {
 
         {/* Description */}
         <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
-          <div className="label-sm" style={{ marginBottom: 'var(--sp-10)' }}>Description</div>
+          <div className="label-sm" style={{ marginBottom: 'var(--sp-10)' }}>
+            Description
+            <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6 }}>
+              ({description.trim().length}/10 min)
+            </span>
+          </div>
           <textarea
             className="input input-textarea"
             placeholder="Describe what happened in detail…"
@@ -206,7 +217,10 @@ export function RaiseDisputePage() {
         {error && <div className="alert alert-error" style={{ marginBottom: 'var(--sp-12)' }}>⚠ {error}</div>}
 
         <button className="btn btn-primary btn-full btn-lg" onClick={submit} disabled={submitting}>
-          {submitting ? <><div className="spinner" style={{ width:16,height:16,borderWidth:2,borderTopColor:'#fff' }} /> Submitting…</> : 'Submit Dispute'}
+          {submitting
+            ? <><div className="spinner" style={{ width:16, height:16, borderWidth:2, borderTopColor:'#fff' }} /> Submitting…</>
+            : 'Submit Dispute'
+          }
         </button>
       </div>
     </div>
@@ -254,14 +268,16 @@ export function DisputeDetailPage() {
               {REASON_LABELS[dispute.reason] || dispute.reason?.replace(/_/g, ' ')}
             </div>
             <div className="mono body-xs">
-              Raised {dispute.createdAt ? new Date(dispute.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' }) : ''}
+              Raised {dispute.createdAt
+                ? new Date(dispute.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' })
+                : ''}
             </div>
           </div>
 
           {/* Details */}
           <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
             {[
-              { label: 'Order ID', val: `#${(dispute.orderId || '').slice(-8).toUpperCase()}`, mono: true },
+              { label: 'Order ID',   val: `#${(dispute.orderId   || '').slice(-8).toUpperCase()}`, mono: true },
               { label: 'Dispute ID', val: `#${(dispute.disputeId || '').slice(-8).toUpperCase()}`, mono: true },
             ].map(({ label, val, mono }) => (
               <div key={label} className="summary-row">
@@ -283,6 +299,36 @@ export function DisputeDetailPage() {
               <div className="label-sm" style={{ marginBottom: 6, color: 'var(--green)' }}>Resolution</div>
               <div className="body-sm">{dispute.resolution}</div>
             </div>
+          )}
+
+          {/* Admin note */}
+          {dispute.adminNote && (
+            <div className="card" style={{ marginBottom: 'var(--sp-12)', background: 'var(--blue-dim, rgba(59,130,246,0.08))' }}>
+              <div className="label-sm" style={{ marginBottom: 6, color: 'var(--blue, #3b82f6)' }}>Response from Support</div>
+              <div className="body-sm" style={{ lineHeight: 1.5 }}>{dispute.adminNote}</div>
+            </div>
+          )}
+
+          {/* Chat CTA */}
+          {!['RESOLVED', 'REJECTED', 'CLOSED'].includes(dispute.status) && (
+            <button
+              className="btn btn-primary btn-full"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 'var(--sp-12)' }}
+              onClick={() => navigate(`/disputes/${id}/chat`)}
+            >
+              <MessageCircle size={16} />
+              Chat with Support
+            </button>
+          )}
+          {['RESOLVED', 'REJECTED', 'CLOSED'].includes(dispute.status) && (
+            <button
+              className="btn btn-secondary btn-full"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 'var(--sp-12)' }}
+              onClick={() => navigate(`/disputes/${id}/chat`)}
+            >
+              <MessageCircle size={16} />
+              View Chat History
+            </button>
           )}
         </div>
       )}

@@ -105,11 +105,15 @@ export const disputesAPI = {
   getById:       (id)       => api.get(`/disputes/${id}`),
   raise:         (data)     => api.post('/disputes', data),
   addEvidence:   (id, data) => api.post(`/disputes/${id}/evidence`, data),
+  // Chat
+  getChat:       (id)       => api.get(`/disputes/${id}/chat`),
+  sendMessage:   (id, data) => api.post(`/disputes/${id}/chat`, data),
 };
 
 // ── Offers ────────────────────────────────────────────────────────────────────
 export const offersAPI = {
-  getAll: () => api.get('/offers'),
+  // amount = current payable amount so server can compute eligible flag per offer
+  getAll: (amount = 0) => api.get(`/offers/all?amount=${amount}`),
 };
 
 // ── Files ─────────────────────────────────────────────────────────────────────

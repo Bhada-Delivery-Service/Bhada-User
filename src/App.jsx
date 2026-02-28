@@ -13,6 +13,7 @@ import PlaceOrderPage from './pages/PlaceOrderPage';
 import ProfilePage from './pages/ProfilePage';
 import AddressesPage from './pages/AddressesPage';
 import DisputesPage, { RaiseDisputePage, DisputeDetailPage } from './pages/DisputesPage';
+import DisputeChatPage from './pages/DisputeChatPage';
 
 function Loading() {
   return (
@@ -99,6 +100,7 @@ function AppShell() {
           <Route path="/addresses"          element={<ProtectedRoute><AddressesPage /></ProtectedRoute>} />
           <Route path="/disputes"           element={<ProtectedRoute><DisputesPage /></ProtectedRoute>} />
           <Route path="/disputes/raise"     element={<ProtectedRoute><RaiseDisputePage /></ProtectedRoute>} />
+          <Route path="/disputes/:id/chat"  element={<ProtectedRoute><DisputeChatPage /></ProtectedRoute>} />
           <Route path="/disputes/:id"       element={<ProtectedRoute><DisputeDetailPage /></ProtectedRoute>} />
           <Route path="/login"              element={<LoginPage />} />
           <Route path="*"                   element={<Navigate to="/" replace />} />
