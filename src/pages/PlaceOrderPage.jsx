@@ -467,6 +467,12 @@ export default function PlaceOrderPage() {
 
   const [step, setStep] = useState(0);
 
+  /* ── DRAFT SELECTION SCREEN (shown before step 0 if drafts exist) ── */
+  const [showDraftScreen,  setShowDraftScreen]  = useState(false);
+  const [draftOrders,      setDraftOrders]      = useState([]);
+  const [draftsLoading,    setDraftsLoading]    = useState(true);
+  const [deletingDraftId,  setDeletingDraftId]  = useState(null);
+
   /* ── STEP 0 — SENDER ── */
   const [senderFirstName, setSenderFirstName] = useState('');
   const [senderLastName,  setSenderLastName]  = useState('');
@@ -507,6 +513,7 @@ export default function PlaceOrderPage() {
 
   /* ── STEP 5 — PAYMENT ── */
   const [draftOrder,     setDraftOrder]     = useState(null);
+  const [itemsSnapshot,  setItemsSnapshot]  = useState(null); // snapshot of items when draft was created
   const [billing,        setBilling]        = useState(null);
   const [isSelfHandling, setIsSelfHandling] = useState(false);
   const [offerCode,      setOfferCode]      = useState('');
@@ -555,6 +562,16 @@ export default function PlaceOrderPage() {
       s.src = 'https://checkout.razorpay.com/v1/checkout.js';
       document.head.appendChild(s);
     }
+
+    // Fetch user's draft orders — show draft selection screen if any exist
+    ordersAPI.getMyDrafts()
+      .then(({ data }) => {
+        const drafts = data.data || [];
+        setDraftOrders(drafts);
+        if (drafts.length > 0) setShowDraftScreen(true);
+      })
+      .catch(() => {})
+      .finally(() => setDraftsLoading(false));
   }, []);
 
   /* ─── Receiver lookup ─── */
@@ -581,12 +598,11 @@ export default function PlaceOrderPage() {
     finally { setLookingUp(false); }
   }, [rawPhone, firstName, lastName]);
 
-  /* ─── Auto re-prepare draft when returning to step 5 with no billing ─── */
+  /* ─── Auto re-prepare draft when reaching step 5 with no draft yet ─── */
   useEffect(() => {
-    // When user navigates back to step 5 (billing cleared by goBack),
-    // automatically re-run prepareDraft so billing + toggle stay in sync.
-    if (step === 4) return; // prepareDraft is triggered manually from goNext
-    if (step === 5 && !billing && !preparingDraft) {
+    // Only create a NEW draft if we don't already have one.
+    // If draftOrder exists (user went back and came forward), reuse it — don't create a duplicate.
+    if (step === 5 && !billing && !preparingDraft && !draftOrder) {
       prepareDraft();
     }
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -675,6 +691,7 @@ export default function PlaceOrderPage() {
       const { data } = await ordersAPI.prepare(payload);
       const order = data.data || data;
       setDraftOrder(order); setBilling(order.billing);
+      setItemsSnapshot(JSON.stringify(items)); // save snapshot so we detect item changes
       setStep(5);
     } catch (e) {
       setError(extractApiError(e));
@@ -782,6 +799,66 @@ export default function PlaceOrderPage() {
     } finally { setPayLoading(false); }
   };
 
+  /* ─── Draft: delete ─── */
+  const handleDeleteDraft = async (orderId) => {
+    setDeletingDraftId(orderId);
+    try {
+      await ordersAPI.deleteDraft(orderId);
+      const remaining = draftOrders.filter(d => d.orderId !== orderId);
+      setDraftOrders(remaining);
+      // If no more drafts, go straight to new order
+      if (remaining.length === 0) setShowDraftScreen(false);
+    } catch (e) {
+      setError(extractApiError(e));
+    } finally {
+      setDeletingDraftId(null);
+    }
+  };
+
+  /* ─── Draft: resume — pre-fill all form state from saved draft ─── */
+  const handleResumeDraft = (draft) => {
+    // Pre-fill receiver
+    const phone = draft.billing?.customerDetails?.phoneNumber
+      || draft.receiver?.phoneNumber || '';
+    setRawPhone(phone.replace(/^\+91/, ''));
+    setFirstName(draft.receiver?.firstName || '');
+    setLastName(draft.receiver?.lastName   || '');
+    setLookupDone(true);
+    setReceiverFound(true);
+
+    // Pre-fill pickup
+    if (draft.senderNode) {
+      setPickup(addrFromPersisted(draft.senderNode));
+      setPickupSource('draft');
+    }
+    // Pre-fill drop
+    if (draft.receiverNode) {
+      setDrop(addrFromPersisted(draft.receiverNode));
+      setDropSource('draft');
+    }
+
+    // Pre-fill items
+    if (draft.items?.length) {
+      setItems(draft.items.map(i => ({
+        name:     i.name     || '',
+        quantity: i.quantity || 1,
+        type:     i.type     || 'DOCUMENT',
+        category: i.category || 'OTHER',
+        size:     i.size     || 'SMALL',
+        images:   i.images   || [],
+      })));
+    }
+
+    // Pre-fill billing draft into step 5
+    setDraftOrder({ orderId: draft.orderId, ...draft });
+    setBilling(draft.billing || null);
+    setIsSelfHandling(draft.isSelfHandling ?? false);
+
+    // Jump straight to payment step
+    setShowDraftScreen(false);
+    setStep(5);
+  };
+
   /* ─── Navigation ─── */
   const goNext = async () => {
     setError('');
@@ -811,7 +888,17 @@ export default function PlaceOrderPage() {
     }
     if (step === 4) {
       if (items.some(i => !i.name.trim())) { setError('All items need a name'); return; }
-      // Clear any previous billing/draft so step-5 useEffect triggers fresh prepareDraft
+      // If a draft already exists AND items haven't changed, reuse it — no duplicate.
+      const currentItemsJson = JSON.stringify(items);
+      if (draftOrder && billing && itemsSnapshot === currentItemsJson) {
+        setStep(5);
+        return;
+      }
+      // Items changed or no draft yet — delete old draft silently before creating fresh one
+      if (draftOrder?.orderId) {
+        try { await ordersAPI.deleteDraft(draftOrder.orderId); } catch (_) {}
+      }
+      // First time: clear stale state and let useEffect create a fresh draft.
       setBilling(null);
       setDraftOrder(null);
       setOfferApplied(null);
@@ -832,10 +919,9 @@ export default function PlaceOrderPage() {
   const goBack = () => { 
     setError(''); 
     if (step === 5) {
-      // Clear stale billing/draft so useEffect on step===5 triggers fresh prepareDraft.
-      // isSelfHandling is intentionally NOT reset — preserves user's toggle choice.
-      setBilling(null);
-      setDraftOrder(null);
+      // Keep draftOrder & billing intact so we reuse the same draft if user comes back.
+      // Only clear offer — user may want to change it after editing items.
+      // isSelfHandling intentionally NOT reset either.
       setOfferApplied(null);
       setOfferCode('');
     }
@@ -860,6 +946,151 @@ export default function PlaceOrderPage() {
   };
 
   /* ─── RENDER ─── */
+
+  /* ── Draft Selection Screen ── */
+  if (showDraftScreen) {
+    return (
+      <div style={{ background:'var(--bg-base)', minHeight:'100vh' }}>
+        {/* Header */}
+        <div className="page-header" style={{ top:0, zIndex:20 }}>
+          <button className="btn btn-ghost btn-icon-sm" onClick={() => navigate(-1)}><ArrowLeft size={16}/></button>
+          <div>
+            <div className="page-title">New Order</div>
+            <div className="page-subtitle">You have unfinished orders</div>
+          </div>
+        </div>
+
+        <div style={{ padding:'16px', paddingBottom:100 }}>
+
+          {/* Drafts list */}
+          <div className="card" style={{ marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+              <div style={{ width:34, height:34, borderRadius:10, background:'rgba(234,88,12,0.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>📋</div>
+              <div>
+                <div className="label-sm">Resume a Draft Order</div>
+                <div className="body-xs" style={{ color:'var(--text-tertiary)', marginTop:2 }}>
+                  {draftOrders.length} saved draft{draftOrders.length !== 1 ? 's' : ''} — tap to continue where you left off
+                </div>
+              </div>
+            </div>
+
+            {draftsLoading ? (
+              <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text-tertiary)' }}>
+                <div className="spinner" style={{ width:18, height:18, borderWidth:2, margin:'0 auto 8px' }}/>
+                <div className="body-xs">Loading drafts…</div>
+              </div>
+            ) : draftOrders.map((draft, idx) => {
+              const b         = draft.billing;
+              const pickup    = draft.senderNode;
+              const drop      = draft.receiverNode;
+              const receiver  = draft.receiver;
+              const itemCount = (draft.items || []).reduce((t, i) => t + (i.quantity || 1), 0);
+              const createdAt = draft.createdAt
+                ? new Date(draft.createdAt?.seconds ? draft.createdAt.seconds * 1000 : draft.createdAt)
+                : null;
+              const isDeleting = deletingDraftId === draft.orderId;
+              return (
+                <div key={draft.orderId} style={{ border:'1.5px solid var(--border-md)', borderRadius:'var(--radius-sm)', marginBottom: idx < draftOrders.length - 1 ? 10 : 0, overflow:'hidden' }}>
+                  {/* Draft card header */}
+                  <div style={{ padding:'11px 14px', background:'var(--bg-elevated)', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid var(--border)' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:9, fontWeight:700, fontFamily:'var(--font-mono)', color:'var(--orange)', background:'rgba(234,88,12,0.1)', padding:'2px 7px', borderRadius:4, letterSpacing:'0.05em' }}>DRAFT</span>
+                      <span style={{ fontSize:11, fontFamily:'var(--font-mono)', color:'var(--text-tertiary)' }}>#{draft.orderId?.slice(-8).toUpperCase()}</span>
+                    </div>
+                    {createdAt && (
+                      <span style={{ fontSize:10, color:'var(--text-tertiary)', fontFamily:'var(--font-mono)' }}>
+                        {createdAt.toLocaleDateString('en-IN', { day:'numeric', month:'short' })} {createdAt.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Route */}
+                  <div style={{ padding:'10px 14px', display:'flex', gap:12 }}>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, paddingTop:3 }}>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 0 2px rgba(22,163,74,0.15)' }}/>
+                      <div style={{ width:2, height:20, background:'var(--border-md)', borderRadius:1 }}/>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--red)', boxShadow:'0 0 0 2px rgba(239,68,68,0.15)' }}/>
+                    </div>
+                    <div style={{ flex:1, display:'flex', flexDirection:'column', gap:8 }}>
+                      <div>
+                        <div style={{ fontSize:9, fontWeight:700, color:'var(--text-tertiary)', fontFamily:'var(--font-mono)', marginBottom:2 }}>PICKUP</div>
+                        <div className="body-xs" style={{ color:'var(--text-secondary)' }}>
+                          {[pickup?.buildingOrFlat, pickup?.street, pickup?.area, pickup?.city].filter(Boolean).join(', ') || 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:9, fontWeight:700, color:'var(--text-tertiary)', fontFamily:'var(--font-mono)', marginBottom:2 }}>DROP</div>
+                        <div className="body-xs" style={{ color:'var(--text-secondary)' }}>
+                          {[drop?.buildingOrFlat, drop?.street, drop?.area, drop?.city].filter(Boolean).join(', ') || 'Not set'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Meta row */}
+                  <div style={{ padding:'8px 14px', borderTop:'1px solid var(--border)', background:'var(--bg-surface)', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                    {receiver && (
+                      <span style={{ fontSize:11, color:'var(--text-secondary)', display:'flex', alignItems:'center', gap:4 }}>
+                        👤 {receiver.firstName} {receiver.lastName}
+                      </span>
+                    )}
+                    {itemCount > 0 && (
+                      <span style={{ fontSize:11, color:'var(--text-secondary)', display:'flex', alignItems:'center', gap:4 }}>
+                        📦 {itemCount} item{itemCount !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {b?.payableAmount > 0 && (
+                      <span style={{ fontSize:11, fontWeight:700, color:'var(--accent)', fontFamily:'var(--font-mono)', marginLeft:'auto' }}>
+                        ₹{Number(b.payableAmount).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ padding:'10px 14px', borderTop:'1px solid var(--border)', display:'flex', gap:8 }}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      style={{ flex:1 }}
+                      disabled={isDeleting}
+                      onClick={() => handleResumeDraft(draft)}
+                    >
+                      <Check size={13}/> Continue Order
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ color:'var(--red)', border:'1.5px solid rgba(239,68,68,0.25)', minWidth:80 }}
+                      disabled={isDeleting}
+                      onClick={() => handleDeleteDraft(draft.orderId)}
+                    >
+                      {isDeleting
+                        ? <div className="spinner" style={{ width:13, height:13, borderWidth:2 }}/>
+                        : <><Trash2 size={13}/> Delete</>
+                      }
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div className="alert alert-error" style={{ marginBottom:12 }}>
+              <AlertCircle size={14} style={{ flexShrink:0 }}/> {error}
+            </div>
+          )}
+
+          {/* Start fresh button */}
+          <button
+            className="btn btn-secondary btn-full btn-lg"
+            onClick={() => setShowDraftScreen(false)}
+          >
+            <Plus size={15}/> Start a New Order Instead
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background:'var(--bg-base)', minHeight:'100vh' }}>
 

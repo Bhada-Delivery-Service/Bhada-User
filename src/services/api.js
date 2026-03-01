@@ -45,6 +45,8 @@ export const authAPI = {
 // ── Orders ────────────────────────────────────────────────────────────────────
 export const ordersAPI = {
   getMyOrders:       ()            => api.get('/orders/my'),
+  getMyDrafts:       ()            => api.get('/orders/my/drafts'),
+  deleteDraft:       (id)          => api.delete(`/orders/${id}/draft`),
   getById:           (id)          => api.get(`/orders/${id}`),
   checkAvailability: (params)      => api.get('/orders/check-availability', { params }),
   getReceiverInfo:   (phone)       => api.get('/orders/receiver-info', { params: { phone } }),
