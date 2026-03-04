@@ -28,6 +28,23 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Real-time: update order status in list without full reload
+  useEffect(() => {
+    const handler = (e) => {
+      const updated = e.detail;
+      if (!updated?.orderId) return;
+      setOrders(prev => {
+        const exists = prev.some(o => o.orderId === updated.orderId);
+        if (exists) return prev.map(o => o.orderId === updated.orderId ? { ...o, ...updated } : o);
+        // New order placed elsewhere — refresh the full list
+        ordersAPI.getMyOrders().then(({ data }) => setOrders(data.data || [])).catch(() => {});
+        return prev;
+      });
+    };
+    window.addEventListener('ws:order:updated', handler);
+    return () => window.removeEventListener('ws:order:updated', handler);
+  }, []);
+
   const active  = orders.filter(o => !['DELIVERED','CANCELLED','DRAFT'].includes(o.status));
   const recent  = orders.filter(o => ['DELIVERED','CANCELLED'].includes(o.status)).slice(0, 3);
   const delivered = orders.filter(o => o.status === 'DELIVERED').length;

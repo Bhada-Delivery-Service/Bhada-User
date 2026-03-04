@@ -757,3 +757,8 @@ select.input { cursor: pointer; }
   font-size: 10px; font-family: var(--font-mono);
   color: #fff;
 }
+/* ── Real-time toast animation ───────────────────────────────────────────── */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

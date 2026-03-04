@@ -525,6 +525,7 @@ export default function PlaceOrderPage() {
   const [activeOffers,   setActiveOffers]   = useState([]);
   const [showOffers,     setShowOffers]     = useState(false);
   const [payMode,        setPayMode]        = useState('RAZORPAY');
+  const [codBlocked,     setCodBlocked]     = useState(false);  // true if CV score < 50
 
   const [loading,     setLoading]     = useState(false);
   const [payLoading,  setPayLoading]  = useState(false);
@@ -546,6 +547,11 @@ export default function PlaceOrderPage() {
         setSenderLastName(u.lastName   || '');
         setSenderPhone(u.phoneNumber   || '');
         if (u.firstName) setSenderSaved(true);
+        // Block COD if CV score < 50
+        if (u.codBlocked) {
+          setCodBlocked(true);
+          setPayMode('RAZORPAY'); // force switch away from COD
+        }
       })
       .catch(() => {})
       .finally(() => setSenderLoading(false));
@@ -1541,19 +1547,22 @@ export default function PlaceOrderPage() {
               <div className="label-sm" style={{ marginBottom:12 }}>Payment Method</div>
               {[
                 { mode:'RAZORPAY', icon:<CreditCard size={17}/>, title:'Pay Online',       sub:'UPI, Cards, Net Banking, Wallets' },
-                { mode:'COD',      icon:<Wallet size={17}/>,     title:'Cash on Delivery', sub:'Pay when parcel is picked up' },
-              ].map(({ mode, icon, title, sub }) => (
-                <div key={mode} onClick={() => setPayMode(mode)} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:'var(--radius-sm)', cursor:'pointer', marginBottom:8, border:`1.5px solid ${payMode===mode?'var(--accent)':'var(--border-md)'}`, background:payMode===mode?'var(--accent-dim)':'var(--bg-elevated)', transition:'all var(--dur)' }}>
+                { mode:'COD',      icon:<Wallet size={17}/>,     title:'Cash on Delivery', sub: codBlocked ? 'Not available — low Customer Value score (CV < 50)' : 'Pay when parcel is picked up' },
+              ].map(({ mode, icon, title, sub }) => {
+                const isCODBlocked = mode === 'COD' && codBlocked;
+                return (
+                <div key={mode} onClick={() => !isCODBlocked && setPayMode(mode)} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:'var(--radius-sm)', cursor: isCODBlocked ? 'not-allowed' : 'pointer', marginBottom:8, border:`1.5px solid ${payMode===mode && !isCODBlocked ?'var(--accent)':'var(--border-md)'}`, background: isCODBlocked ? 'var(--bg-muted, rgba(255,255,255,0.03))' : payMode===mode?'var(--accent-dim)':'var(--bg-elevated)', transition:'all var(--dur)', opacity: isCODBlocked ? 0.5 : 1 }}>
                   <div style={{ color:payMode===mode?'var(--accent)':'var(--text-tertiary)' }}>{icon}</div>
                   <div style={{ flex:1 }}>
                     <div className="body-sm font-semibold">{title}</div>
                     <div className="body-xs" style={{ color:'var(--text-secondary)' }}>{sub}</div>
                   </div>
-                  <div style={{ width:18, height:18, borderRadius:'50%', border:`2px solid ${payMode===mode?'var(--accent)':'var(--border-md)'}`, background:payMode===mode?'var(--accent)':'transparent', display:'flex', alignItems:'center', justifyContent:'center', transition:'all var(--dur)', flexShrink:0 }}>
-                    {payMode===mode && <Check size={10} strokeWidth={3} style={{ color:'#fff' }}/>}
+                  <div style={{ width:18, height:18, borderRadius:'50%', border:`2px solid ${payMode===mode && !isCODBlocked ?'var(--accent)':'var(--border-md)'}`, background:payMode===mode && !isCODBlocked ?'var(--accent)':'transparent', display:'flex', alignItems:'center', justifyContent:'center', transition:'all var(--dur)', flexShrink:0 }}>
+                    {payMode===mode && !isCODBlocked && <Check size={10} strokeWidth={3} style={{ color:'#fff' }}/>}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Package, User, Bell, AlertCircle, Plus } from 'lucide-react';
+import { Home, Package, User, Bell, AlertCircle, Plus, ReceiptText } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { ThemeProvider } from './context/Themecontext';
@@ -14,6 +14,55 @@ import ProfilePage from './pages/ProfilePage';
 import AddressesPage from './pages/AddressesPage';
 import DisputesPage, { RaiseDisputePage, DisputeDetailPage } from './pages/DisputesPage';
 import DisputeChatPage from './pages/DisputeChatPage';
+import RefundsPage from './pages/RefundsPage';
+
+const TOAST_COLORS = {
+  PAYMENT_REFUNDED: { bg:'var(--green-dim)',  border:'var(--green)',  icon:'💰' },
+  ORDER_PLACED:     { bg:'var(--accent-dim)', border:'var(--accent)', icon:'📦' },
+  ORDER_ACCEPTED:   { bg:'var(--accent-dim)', border:'var(--accent)', icon:'🛵' },
+  ORDER_DISPATCHED: { bg:'var(--accent-dim)', border:'var(--accent)', icon:'🚀' },
+  ORDER_DELIVERED:  { bg:'var(--green-dim)',  border:'var(--green)',  icon:'✅' },
+  ORDER_CANCELLED:  { bg:'var(--red-dim)',    border:'var(--red)',    icon:'❌' },
+  DISPUTE_RESOLVED: { bg:'var(--green-dim)',  border:'var(--green)',  icon:'✅' },
+  default:          { bg:'var(--bg-elevated)',border:'var(--accent)', icon:'🔔' },
+};
+
+function ToastOverlay() {
+  const { toasts, dismissToast } = useNotifications();
+  if (!toasts?.length) return null;
+  return (
+    <div style={{
+      position:'fixed', top:16, left:'50%', transform:'translateX(-50%)',
+      zIndex:9999, display:'flex', flexDirection:'column', gap:8,
+      width:'min(340px, calc(100vw - 32px))', pointerEvents:'none',
+    }}>
+      {toasts.map(t => {
+        const cfg = TOAST_COLORS[t.type] || TOAST_COLORS.default;
+        return (
+          <div
+            key={t.toastId}
+            onClick={() => dismissToast(t.toastId)}
+            style={{
+              background:cfg.bg, border:`1px solid ${cfg.border}`,
+              borderLeft:`3px solid ${cfg.border}`,
+              borderRadius:'var(--radius)', padding:'10px 14px',
+              display:'flex', alignItems:'flex-start', gap:10,
+              boxShadow:'0 4px 20px rgba(0,0,0,0.2)',
+              pointerEvents:'all', cursor:'pointer',
+              animation:'slideDown 0.25s ease',
+            }}
+          >
+            <span style={{ fontSize:18, flexShrink:0, lineHeight:1.2 }}>{cfg.icon}</span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', marginBottom:2 }}>{t.title}</div>
+              <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.4 }}>{t.body}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function Loading() {
   return (
@@ -42,9 +91,7 @@ function NotificationBell() {
   return (
     <button className="nav-action" onClick={openDrawer}>
       <Bell size={17} />
-      {unseenCount > 0 && (
-        <span className="nav-badge">{unseenCount > 9 ? '9+' : unseenCount}</span>
-      )}
+      {unseenCount > 0 && <span className="nav-badge">{unseenCount > 9 ? '9+' : unseenCount}</span>}
     </button>
   );
 }
@@ -58,10 +105,11 @@ function AppShell() {
   if (!user) return null;
 
   const navItems = [
-    { path: '/',         icon: Home,         label: t('home')     },
-    { path: '/orders',   icon: Package,      label: t('orders')   },
-    { path: '/disputes', icon: AlertCircle,  label: t('disputes') },
-    { path: '/profile',  icon: User,         label: t('profile')  },
+    { path:'/',         icon:Home,        label:t('home')     },
+    { path:'/orders',   icon:Package,     label:t('orders')   },
+    { path:'/refunds',  icon:ReceiptText, label:'Refunds'     },
+    { path:'/disputes', icon:AlertCircle, label:t('disputes') },
+    { path:'/profile',  icon:User,        label:t('profile')  },
   ];
 
   const isActive = (path) =>
@@ -80,15 +128,13 @@ function AppShell() {
         <nav className="top-nav">
           <div className="nav-brand">Bhada</div>
           <NotificationBell />
-          <button
-            className="nav-action nav-action-primary"
-            onClick={() => navigate('/place-order')}
-            title="New Order"
-          >
+          <button className="nav-action nav-action-primary" onClick={() => navigate('/place-order')} title="New Order">
             <Plus size={18} />
           </button>
         </nav>
       )}
+
+      <ToastOverlay />
 
       <div className={hideChrome ? '' : 'page-content'}>
         <Routes>
@@ -98,6 +144,7 @@ function AppShell() {
           <Route path="/place-order"        element={<ProtectedRoute><PlaceOrderPage /></ProtectedRoute>} />
           <Route path="/profile"            element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/addresses"          element={<ProtectedRoute><AddressesPage /></ProtectedRoute>} />
+          <Route path="/refunds"            element={<ProtectedRoute><RefundsPage /></ProtectedRoute>} />
           <Route path="/disputes"           element={<ProtectedRoute><DisputesPage /></ProtectedRoute>} />
           <Route path="/disputes/raise"     element={<ProtectedRoute><RaiseDisputePage /></ProtectedRoute>} />
           <Route path="/disputes/:id/chat"  element={<ProtectedRoute><DisputeChatPage /></ProtectedRoute>} />
@@ -110,14 +157,8 @@ function AppShell() {
       {!hideChrome && (
         <nav className="bottom-tabs">
           {navItems.map(({ path, icon: Icon, label }) => (
-            <div
-              key={path}
-              className={`tab-item ${isActive(path) ? 'active' : ''}`}
-              onClick={() => navigate(path)}
-            >
-              <div className="tab-icon-wrap">
-                <Icon size={19} />
-              </div>
+            <div key={path} className={`tab-item ${isActive(path) ? 'active' : ''}`} onClick={() => navigate(path)}>
+              <div className="tab-icon-wrap"><Icon size={19} /></div>
               {label}
             </div>
           ))}

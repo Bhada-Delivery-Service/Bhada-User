@@ -137,3 +137,10 @@ export const profileAPI = {
   getMe:    ()     => api.get('/auth/me'),
   updateMe: (data) => api.put('/auth/me', data),
 };
+
+// ── Refunds ───────────────────────────────────────────────────────────────────
+export const refundsAPI = {
+  getMy:       ()        => api.get('/refunds/my'),
+  getById:     (id)      => api.get(`/refunds/${id}`),
+  getByOrder:  (orderId) => api.get(`/refunds/order/${orderId}`),
+};
