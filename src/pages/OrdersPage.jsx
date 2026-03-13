@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
    MapPin, ArrowRight, Package, CheckCircle, Clock, Truck,
   XCircle, ArrowLeft, RefreshCw, Copy, ExternalLink, Check,
-  CreditCard, AlertCircle,
+  CreditCard, AlertCircle, Star,
 } from 'lucide-react';
-import { ordersAPI, refundsAPI } from '../services/api';
+import { ordersAPI, refundsAPI, ridersAPI } from '../services/api';
 import { useLang } from '../context/Langcontext';
 
 const STATUS_CONFIG = {
@@ -263,6 +263,10 @@ export function OrderDetailPage() {
   const [markingReady, setMarkingReady] = useState(false);
   const [refund, setRefund] = useState(null);
   const [refundLoading, setRefundLoading] = useState(false);
+  const [ratingStars, setRatingStars] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingDone, setRatingDone] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -281,7 +285,13 @@ export function OrderDetailPage() {
 
   useEffect(() => { load(); }, [id]);
 
-  // Fetch refund after order loads (only for CANCELLED online orders)
+  // Check if user already rated this order (persisted in localStorage)
+  useEffect(() => {
+    if (id) {
+      const stored = localStorage.getItem(`rated_order_${id}`);
+      if (stored) setRatingDone(true);
+    }
+  }, [id]);
   useEffect(() => {
     if (order?.status === 'CANCELLED' && order?.billing?.paymentMode !== 'COD') {
       loadRefund();
@@ -310,6 +320,19 @@ export function OrderDetailPage() {
   useEffect(() => { load(); }, [id]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const handleRating = async () => {
+    if (!ratingStars) { showToast('Please select a star rating'); return; }
+    setRatingSubmitting(true);
+    try {
+      await ridersAPI.rate(order.assignedRiderId, ratingStars, ratingComment, id);
+      localStorage.setItem(`rated_order_${id}`, '1');
+      setRatingDone(true);
+      showToast('✓ Thanks for rating your rider!');
+    } catch (e) {
+      showToast('✗ ' + (e.response?.data?.message || 'Failed to submit rating'));
+    } finally { setRatingSubmitting(false); }
+  };
 
   const handleMarkReady = async () => {
     setMarkingReady(true);
@@ -700,6 +723,73 @@ export function OrderDetailPage() {
         )}
 
         {/* Cancel */}
+        {/* ── Rider Rating Card — shown after delivery ─────────────────────── */}
+        {order.status === 'DELIVERED' && order.assignedRiderId && (
+          <div className="card" style={{ marginBottom: 'var(--sp-12)', borderColor: ratingDone ? 'rgba(22,163,74,0.3)' : 'rgba(245,158,11,0.35)', borderWidth: 1.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--sp-10)' }}>
+              <Star size={16} style={{ color: '#f59e0b' }} />
+              <div className="label-sm" style={{ margin: 0 }}>Rate Your Rider</div>
+            </div>
+
+            {ratingDone ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--green-dim)', borderRadius: 'var(--radius-sm)' }}>
+                <CheckCircle size={15} style={{ color: 'var(--green)', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--green)' }}>Thanks! Your rating has been submitted.</span>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 'var(--sp-10)' }}>
+                  How was your experience with{' '}
+                  <strong>{[order.assignedRider?.firstName, order.assignedRider?.lastName].filter(Boolean).join(' ') || 'your rider'}</strong>?
+                </div>
+
+                {/* Star picker */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--sp-10)' }}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button
+                      key={star}
+                      onClick={() => setRatingStars(star)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                        fontSize: 30, lineHeight: 1,
+                        color: star <= ratingStars ? '#f59e0b' : 'var(--border)',
+                        transition: 'color 0.1s, transform 0.1s',
+                        transform: star <= ratingStars ? 'scale(1.15)' : 'scale(1)',
+                      }}
+                    >★</button>
+                  ))}
+                </div>
+                {ratingStars > 0 && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 'var(--sp-10)', fontWeight: 600 }}>
+                    {['', 'Poor 😞', 'Fair 😐', 'Good 🙂', 'Great 😊', 'Excellent 🌟'][ratingStars]}
+                  </div>
+                )}
+
+                {/* Comment */}
+                <textarea
+                  className="input"
+                  placeholder="Add a comment (optional)…"
+                  value={ratingComment}
+                  onChange={e => setRatingComment(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  style={{ width: '100%', resize: 'vertical', fontSize: 13, marginBottom: 'var(--sp-10)', boxSizing: 'border-box' }}
+                />
+
+                <button
+                  className="btn btn-primary btn-full"
+                  disabled={ratingSubmitting || !ratingStars}
+                  onClick={handleRating}
+                >
+                  {ratingSubmitting
+                    ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderTopColor: '#fff' }} /> Submitting…</>
+                    : ratingStars ? `Submit ${ratingStars}★ Rating` : 'Select stars to rate'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {canCancel && !showCancel && (
           <button className="btn btn-danger btn-full" style={{ marginTop: 'var(--sp-8)' }} onClick={() => setShowCancel(true)}>
             Cancel Order

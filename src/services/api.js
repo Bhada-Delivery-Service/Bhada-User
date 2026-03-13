@@ -144,3 +144,10 @@ export const refundsAPI = {
   getById:     (id)      => api.get(`/refunds/${id}`),
   getByOrder:  (orderId) => api.get(`/refunds/order/${orderId}`),
 };
+
+// ── Riders (rating) ───────────────────────────────────────────────────────────
+export const ridersAPI = {
+  rate:       (riderId, rating, comment, orderId) =>
+    api.post(`/riders/${riderId}/rate`, { rating, comment, orderId }),
+  getRatings: (riderId) => api.get(`/riders/${riderId}/ratings`),
+};
