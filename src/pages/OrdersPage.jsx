@@ -438,6 +438,56 @@ export function OrderDetailPage() {
           </div>
         )}
 
+        {/* ── Rider Info Card — shown any time a rider is assigned (PLACED→DISPATCHED) ── */}
+        {order.assignedRiderId && !['DELIVERED', 'CANCELLED', 'DRAFT'].includes(order.status) && (
+          <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
+            <div className="label-sm" style={{ marginBottom: 'var(--sp-10)' }}>Your Rider</div>
+            {order.assignedRider ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: 'var(--accent)', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  fontSize: 20, flexShrink: 0,
+                }}>🛵</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
+                    {[order.assignedRider.firstName, order.assignedRider.lastName].filter(Boolean).join(' ') || 'Your Rider'}
+                  </div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 3 }}>
+                    {order.assignedRider.phoneNumber}
+                    {order.assignedRider.rating != null && (
+                      <span> · ⭐ {Number(order.assignedRider.rating).toFixed(1)}</span>
+                    )}
+                  </div>
+                  {order.riderAcceptedAt && (
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                      Accepted at {new Date(order.riderAcceptedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
+                </div>
+                {order.assignedRider.phoneNumber && (
+                  <a
+                    href={`tel:${order.assignedRider.phoneNumber}`}
+                    style={{
+                      width: 40, height: 40, borderRadius: '50%',
+                      background: 'var(--accent)', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 18, textDecoration: 'none', flexShrink: 0,
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >📞</a>
+                )}
+              </div>
+            ) : (
+              <div className="mono" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                Rider assigned
+                {order.riderAcceptedAt && <span> · {new Date(order.riderAcceptedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Mark Ready — shown any time order is PLACED and sender hasn't marked ready yet */}
         {canMarkReady && (
           <div className="card" style={{ marginBottom: 'var(--sp-12)', borderColor: 'var(--accent)', borderWidth: 1.5 }}>
@@ -449,12 +499,6 @@ export function OrderDetailPage() {
                 ? 'Your rider has accepted the order. Pack your package and confirm it is ready for pickup.'
                 : 'Pack your package and mark it ready. We will notify the rider as soon as one is assigned.'}
             </div>
-            {order.assignedRiderId && (
-              <div className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 'var(--sp-12)' }}>
-                Rider ID: {order.assignedRiderId.slice(-8).toUpperCase()}
-                {order.riderAcceptedAt && <span> · Accepted {new Date(order.riderAcceptedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
-              </div>
-            )}
             <button
               className="btn btn-primary btn-full"
               disabled={markingReady}
