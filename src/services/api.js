@@ -67,6 +67,9 @@ export const ordersAPI = {
   removeOffer:       (id, offerId) => api.delete(`/orders/${id}/offer/${offerId}`),
   getOffers:         (id)          => api.get(`/orders/${id}/offers`),
   handover:          (id, otp)     => api.post(`/orders/${id}/handover`, { pickupOtp: otp }),
+
+  // COD: get payment data (QR image, Razorpay order ID, status)
+  getPayment:        (id)          => api.get(`/orders/${id}/payment`),
 };
 
 // ── Payments (Razorpay — v2.3.0) ──────────────────────────────────────────────
@@ -75,6 +78,17 @@ export const paymentsAPI = {
   verify:    (pid, data)  => api.post(`/payments/${pid}/verify`, data),
   getStatus: (pid)        => api.get(`/payments/${pid}/status`),
   refund:    (pid, data)  => api.post(`/payments/${pid}/refund`, data),
+};
+
+// ─── COD Digital Payment ──────────────────────────────────────────────────
+// User can pay COD orders digitally via QR scan or Razorpay checkout
+export const codPaymentsAPI = {
+  // Get QR code + Razorpay order ID for Pay Now button
+  getByOrder:      (orderId)       => api.get(`/payments/cod/${orderId}`),
+  // (Re-)generate if expired
+  initiate:        (orderId)       => api.post('/payments/cod/initiate', { orderId }),
+  // Verify signature after Razorpay Checkout completes
+  verify:          (orderId, data) => api.post(`/payments/cod/${orderId}/verify`, data),
 };
 
 // ── Pricing ───────────────────────────────────────────────────────────────────

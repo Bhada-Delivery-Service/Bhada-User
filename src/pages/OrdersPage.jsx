@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
    MapPin, ArrowRight, Package, CheckCircle, Clock, Truck,
   XCircle, ArrowLeft, RefreshCw, Copy, ExternalLink, Check,
-  CreditCard, AlertCircle, Star,
+  CreditCard, AlertCircle, Star, QrCode, Banknote, Smartphone,
 } from 'lucide-react';
-import { ordersAPI, refundsAPI, ridersAPI } from '../services/api';
+import { ordersAPI, refundsAPI, ridersAPI, codPaymentsAPI } from '../services/api';
 import { useLang } from '../context/Langcontext';
 
 const STATUS_CONFIG = {
@@ -232,11 +232,23 @@ export function OrdersPage() {
                   <span className="route-dot" style={{ background: 'var(--red)' }} />
                   <span className="truncate" style={{ flex: 1 }}>{drop}</span>
                 </div>
-                {(order.billing?.payableAmount || order.billing?.subtotalAmount) && (
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 'var(--sp-6)' }}>
-                    ₹{Number(order.billing.payableAmount || order.billing.subtotalAmount).toFixed(2)}
-                  </div>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--sp-6)' }}>
+                  {(order.billing?.payableAmount || order.billing?.subtotalAmount) && (
+                    <div className="mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      ₹{Number(order.billing.payableAmount || order.billing.subtotalAmount).toFixed(2)}
+                    </div>
+                  )}
+                  {order.billing?.paymentMode === 'COD' && !['CANCELLED','DELIVERED'].includes(order.status) && (
+                    <span style={{
+                      fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                      padding: '2px 8px', borderRadius: 4, letterSpacing: '0.04em',
+                      background: order.billing?.status === 'PAID' ? 'var(--green-dim)' : 'var(--orange-dim)',
+                      color: order.billing?.status === 'PAID' ? 'var(--green)' : 'var(--orange)',
+                    }}>
+                      {order.billing?.status === 'PAID' ? '✓ PAID' : '💳 COD'}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })
@@ -267,6 +279,51 @@ export function OrderDetailPage() {
   const [ratingComment, setRatingComment] = useState('');
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
   const [ratingDone, setRatingDone] = useState(false);
+  // COD digital payment
+  const [codPayment, setCodPayment] = useState(null);
+  const [codLoading, setCodLoading] = useState(false);
+  const [payNowBusy, setPayNowBusy] = useState(false);
+
+  // Load COD payment data when order is COD
+  const loadCodPayment = () => {
+    if (!id) return;
+    codPaymentsAPI.getByOrder(id)
+      .then(({ data }) => setCodPayment(data.data || data))
+      .catch(() => {})
+      .finally(() => setCodLoading(false));
+  };
+
+  // Razorpay Pay Now handler
+  const handlePayNow = () => {
+    if (!codPayment?.razorpayOrderId || !window.Razorpay) return;
+    setPayNowBusy(true);
+    const rzp = new window.Razorpay({
+      key:      import.meta.env.VITE_RAZORPAY_KEY_ID,
+      order_id: codPayment.razorpayOrderId,
+      amount:   Math.round(codPayment.amount * 100),
+      currency: 'INR',
+      name:     'Bhada',
+      description: `COD Payment – Order #${id.slice(-8).toUpperCase()}`,
+      handler: async (response) => {
+        try {
+          await codPaymentsAPI.verify(id, {
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
+          });
+          setCodPayment(prev => prev ? { ...prev, paymentStatus: 'PAID' } : prev);
+          showToast('✓ Payment successful! Thank you.');
+        } catch { showToast('✗ Verification failed. Contact support.'); }
+        finally { setPayNowBusy(false); }
+      },
+      modal: { ondismiss: () => setPayNowBusy(false) },
+      prefill: {
+        name:    [order?.sender?.firstName, order?.sender?.lastName].filter(Boolean).join(' '),
+        contact: order?.sender?.phoneNumber || '',
+      },
+      theme: { color: '#4F6EF7' },
+    });
+    rzp.open();
+  };
 
   const load = () => {
     setLoading(true);
@@ -297,6 +354,29 @@ export function OrderDetailPage() {
       loadRefund();
     }
   }, [order?.status, id]);
+
+  // Load COD payment when order is COD
+  useEffect(() => {
+    if (order?.billing?.paymentMode === 'COD' && id) {
+      if (codPayment?.paymentStatus !== 'PAID') {
+        setCodLoading(true);
+        loadCodPayment();
+      }
+    }
+  }, [order?.status, id]);
+
+  // Real-time: COD payment confirmed
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.detail?.orderId !== id) return;
+      setCodPayment(prev => prev
+        ? { ...prev, paymentStatus: 'PAID', paymentAt: new Date().toISOString() }
+        : { paymentStatus: 'PAID', orderId: id });
+      showToast('✓ COD payment received! Order is now paid.');
+    };
+    window.addEventListener('ws:cod:payment_received', handler);
+    return () => window.removeEventListener('ws:cod:payment_received', handler);
+  }, [id]);
 
   // Real-time: refresh order + refund when socket fires
   useEffect(() => {
@@ -655,6 +735,84 @@ export function OrderDetailPage() {
             <div className="mono" style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 'var(--sp-6)' }}>
               {order.billing.paymentMode || 'COD'} · {order.billing.totalDistance ? `${Number(order.billing.totalDistance).toFixed(1)} km` : ''}
             </div>
+          </div>
+        )}
+
+        {/* ── COD Digital Payment Card ── */}
+        {order.billing?.paymentMode === 'COD' && !['CANCELLED'].includes(order.status) && (
+          <div className="card" style={{
+            marginBottom: 'var(--sp-12)',
+            borderColor: codPayment?.paymentStatus === 'PAID' ? 'rgba(22,163,74,0.35)' : 'rgba(245,158,11,0.3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--sp-12)' }}>
+              <Banknote size={16} style={{ color: codPayment?.paymentStatus === 'PAID' ? 'var(--green)' : 'var(--orange)' }} />
+              <div className="label-sm" style={{ margin: 0 }}>
+                {codPayment?.paymentStatus === 'PAID' ? 'Payment Received ✅' : 'Cash on Delivery — Pay Digitally'}
+              </div>
+              {codLoading && <div className="spinner" style={{ width: 12, height: 12, borderWidth: 2, marginLeft: 'auto' }} />}
+            </div>
+
+            {codPayment?.paymentStatus === 'PAID' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 14px', background: 'var(--green-dim)', borderRadius: 'var(--radius-sm)' }}>
+                <CheckCircle size={18} style={{ color: 'var(--green)', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>Payment Confirmed</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                    ₹{Number(codPayment?.amount || order.billing?.payableAmount || 0).toFixed(2)} received
+                    {codPayment?.paymentAt ? ` · ${new Date(codPayment.paymentAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}` : ''}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 'var(--sp-12)', lineHeight: 1.5 }}>
+                  You selected Cash on Delivery. You can also pay digitally via UPI — scan the QR below or tap Pay Now.
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0',
+                  borderBottom: '1px solid var(--border)', marginBottom: 'var(--sp-12)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Amount to Pay</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18 }}>
+                    ₹{Number(codPayment?.amount || order.billing?.payableAmount || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                {codPayment?.qrCodeImageUrl && (
+                  <div style={{ textAlign: 'center', marginBottom: 'var(--sp-12)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 'var(--sp-8)' }}>
+                      <QrCode size={12} style={{ color: 'var(--text-tertiary)' }} />
+                      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+                        SCAN WITH ANY UPI APP
+                      </span>
+                    </div>
+                    <div style={{ display: 'inline-block', padding: 10, background: '#fff', borderRadius: 12, border: '2px solid var(--border)' }}>
+                      <img src={codPayment.qrCodeImageUrl} alt="UPI QR Code"
+                        style={{ width: 180, height: 180, display: 'block' }} />
+                    </div>
+                    {codPayment.qrExpiresAt && (
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginTop: 6 }}>
+                        Expires {new Date(codPayment.qrExpiresAt * 1000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  className="btn btn-primary btn-full"
+                  disabled={payNowBusy || codLoading || !codPayment?.razorpayOrderId}
+                  onClick={handlePayNow}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  {payNowBusy
+                    ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderTopColor: '#fff' }} /> Processing…</>
+                    : <><Smartphone size={15} /> Pay Now via UPI / Card</>}
+                </button>
+                <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-tertiary)', marginTop: 8 }}>
+                  Secured by Razorpay · You can also pay cash at delivery
+                </div>
+              </>
+            )}
           </div>
         )}
 

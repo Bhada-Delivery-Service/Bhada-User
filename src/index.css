@@ -762,3 +762,122 @@ select.input { cursor: pointer; }
   from { opacity: 0; transform: translateY(-12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* ════════════════════════════════════════════════════════════════════════════
+   PROMO BANNER ANIMATION
+════════════════════════════════════════════════════════════════════════════ */
+@keyframes promoSlide {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   QUICK ACTION CHIP (hover handled inline, but active state)
+════════════════════════════════════════════════════════════════════════════ */
+.quick-chip:active { transform: scale(0.94); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DELIVERY PROGRESS BAR (order detail)
+════════════════════════════════════════════════════════════════════════════ */
+.progress-steps {
+  display: flex;
+  align-items: center;
+  padding: var(--sp-16) var(--sp-16) var(--sp-12);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.progress-steps::-webkit-scrollbar { display: none; }
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.progress-step-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--border-md);
+  background: var(--bg-elevated);
+  transition: all 0.3s var(--ease);
+  position: relative;
+}
+.progress-step-dot.done {
+  background: var(--green);
+  border-color: var(--green);
+}
+.progress-step-dot.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+.progress-step-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.progress-step-label.done   { color: var(--green); }
+.progress-step-label.active { color: var(--accent); }
+.progress-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 20px;
+  max-width: 48px;
+  background: var(--border-md);
+  margin: 0 var(--sp-4);
+  margin-bottom: 18px;
+  border-radius: 1px;
+  transition: background 0.4s;
+}
+.progress-connector.done { background: var(--green); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ACTIVE ORDER CARD LEFT ACCENT
+════════════════════════════════════════════════════════════════════════════ */
+.order-card-active {
+  border-left-width: 3px !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   TAB ITEM ACTIVE PILL
+════════════════════════════════════════════════════════════════════════════ */
+.tab-item.active .tab-icon-wrap {
+  background: var(--accent-dim);
+  transform: scale(1.08);
+}
+.tab-icon-wrap {
+  transition: background var(--dur), transform var(--dur);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ADDRESS BAR HOVER
+════════════════════════════════════════════════════════════════════════════ */
+.address-bar:hover {
+  border-color: var(--accent) !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   STAT CARD HOVER
+════════════════════════════════════════════════════════════════════════════ */
+.stat-card {
+  transition: all var(--dur) var(--ease);
+}
+.stat-card:hover {
+  border-color: var(--border-md);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+/* Toast progress bar animation */
+@keyframes toastProgress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}

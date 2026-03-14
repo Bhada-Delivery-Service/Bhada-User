@@ -35,7 +35,7 @@ function ToastOverlay() {
     <div style={{
       position:'fixed', top:16, left:'50%', transform:'translateX(-50%)',
       zIndex:9999, display:'flex', flexDirection:'column', gap:8,
-      width:'min(340px, calc(100vw - 32px))', pointerEvents:'none',
+      width:'min(360px, calc(100vw - 24px))', pointerEvents:'none',
     }}>
       {toasts.map(t => {
         const cfg = TOAST_COLORS[t.type] || TOAST_COLORS.default;
@@ -46,17 +46,28 @@ function ToastOverlay() {
             style={{
               background:cfg.bg, border:`1px solid ${cfg.border}`,
               borderLeft:`3px solid ${cfg.border}`,
-              borderRadius:'var(--radius)', padding:'10px 14px',
+              borderRadius:'var(--radius)', padding:'12px 14px',
               display:'flex', alignItems:'flex-start', gap:10,
-              boxShadow:'0 4px 20px rgba(0,0,0,0.2)',
+              boxShadow:'0 8px 28px rgba(0,0,0,0.25)',
               pointerEvents:'all', cursor:'pointer',
               animation:'slideDown 0.25s ease',
+              position:'relative', overflow:'hidden',
             }}
           >
-            <span style={{ fontSize:18, flexShrink:0, lineHeight:1.2 }}>{cfg.icon}</span>
+            <span style={{ fontSize:20, flexShrink:0, lineHeight:1.1 }}>{cfg.icon}</span>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', marginBottom:2 }}>{t.title}</div>
               <div style={{ fontSize:12, color:'var(--text-secondary)', lineHeight:1.4 }}>{t.body}</div>
+            </div>
+            {/* Auto-dismiss progress bar */}
+            <div style={{
+              position:'absolute', bottom:0, left:0, right:0, height:2,
+              background:`${cfg.border}40`,
+            }}>
+              <div style={{
+                height:'100%', background:cfg.border, borderRadius:'0 0 var(--radius) var(--radius)',
+                animation:'toastProgress 4s linear forwards',
+              }}/>
             </div>
           </div>
         );
