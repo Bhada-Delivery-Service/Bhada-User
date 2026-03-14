@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, ArrowRight, Clock, CheckCircle, MapPin, ChevronRight, Zap } from 'lucide-react';
+import { Package, ArrowRight, Clock, CheckCircle, MapPin, ChevronRight, Zap, MessageSquare } from 'lucide-react';
 import { ordersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/Langcontext';
@@ -162,6 +162,42 @@ export default function HomePage() {
             </div>
           </div>
         )}
+
+        {/* Feedback & Suggestions Banner */}
+        <div style={{ marginTop: 'var(--sp-24)' }}>
+          <button
+            onClick={() => navigate('/feedback')}
+            style={{
+              width: '100%',
+              background: 'var(--bg-surface)',
+              border: '1.5px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: 'var(--sp-16)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--sp-12)',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: 'var(--accent-dim)',
+              display: 'grid', placeItems: 'center',
+            }}>
+              <MessageSquare size={20} style={{ color: 'var(--accent)' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', marginBottom: 2 }}>
+                Share Feedback or a Suggestion
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Help us improve — your voice shapes our service
+              </div>
+            </div>
+            <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+          </button>
+        </div>
       </div>
     </div>
   );

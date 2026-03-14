@@ -15,6 +15,7 @@ import AddressesPage from './pages/AddressesPage';
 import DisputesPage, { RaiseDisputePage, DisputeDetailPage } from './pages/DisputesPage';
 import DisputeChatPage from './pages/DisputeChatPage';
 import RefundsPage from './pages/RefundsPage';
+import FeedbackPage from './pages/FeedbackPage';
 
 const TOAST_COLORS = {
   PAYMENT_REFUNDED: { bg:'var(--green-dim)',  border:'var(--green)',  icon:'💰' },
@@ -118,6 +119,7 @@ function AppShell() {
   const hideChrome =
     location.pathname.startsWith('/place-order') ||
     location.pathname.startsWith('/login') ||
+    location.pathname.startsWith('/feedback') ||
     /^\/orders\/.+/.test(location.pathname) ||
     /^\/disputes\/(raise|.{10,})/.test(location.pathname) ||
     location.pathname.startsWith('/addresses');
@@ -145,6 +147,7 @@ function AppShell() {
           <Route path="/profile"            element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/addresses"          element={<ProtectedRoute><AddressesPage /></ProtectedRoute>} />
           <Route path="/refunds"            element={<ProtectedRoute><RefundsPage /></ProtectedRoute>} />
+          <Route path="/feedback"           element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
           <Route path="/disputes"           element={<ProtectedRoute><DisputesPage /></ProtectedRoute>} />
           <Route path="/disputes/raise"     element={<ProtectedRoute><RaiseDisputePage /></ProtectedRoute>} />
           <Route path="/disputes/:id/chat"  element={<ProtectedRoute><DisputeChatPage /></ProtectedRoute>} />

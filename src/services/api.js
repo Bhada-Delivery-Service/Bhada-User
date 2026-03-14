@@ -151,3 +151,9 @@ export const ridersAPI = {
     api.post(`/riders/${riderId}/rate`, { rating, comment, orderId }),
   getRatings: (riderId) => api.get(`/riders/${riderId}/ratings`),
 };
+
+// ── Feedback & Suggestions ────────────────────────────────────────────────────
+export const feedbackAPI = {
+  submit:  (data)  => api.post('/feedback', data),
+  getMy:   ()      => api.get('/feedback/my'),
+};
