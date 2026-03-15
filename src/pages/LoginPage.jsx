@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Phone, Shield, ArrowLeft, RefreshCw, Package } from 'lucide-react';
 import { sendOTP, verifyOTP } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/Langcontext';
@@ -18,22 +19,31 @@ export default function LoginPage() {
   const navigate               = useNavigate();
   const [step, setStep]        = useState('phone');
   const [phone, setPhone]      = useState('');
-  const [otp, setOtp]          = useState('');
+  const [otp, setOtp]          = useState(['', '', '', '', '', '']);
   const [loading, setLoading]  = useState(false);
   const [error, setError]      = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
   const confirmRef             = useRef(null);
+  const otpRefs                = useRef([]);
+
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const id = setTimeout(() => setResendTimer(r => r - 1), 1000);
+      return () => clearTimeout(id);
+    }
+  }, [resendTimer]);
 
   const handleSendOTP = async (e) => {
     e.preventDefault();
     setError('');
     const normalized = normalizePhone(phone);
-    if (!normalized) { setError(t('invalidPhone')); return; }
+    if (!normalized) { setError(t('invalidPhone') || 'Enter a valid phone number'); return; }
     setLoading(true);
     try {
       confirmRef.current = await sendOTP(normalized, 'recaptcha-container');
       setStep('otp');
+      setResendTimer(30);
     } catch (err) {
-      console.error('[LoginPage] sendOTP error:', err);
       setError(err.message || 'Failed to send OTP');
     } finally { setLoading(false); }
   };
@@ -41,132 +51,227 @@ export default function LoginPage() {
   const handleVerifyOTP = async (e) => {
     e.preventDefault();
     setError('');
-    if (otp.length !== 6) { setError(t('enterSixDigit')); return; }
-    if (!confirmRef.current) { setError(t('sessionExpired')); return; }
+    const otpStr = otp.join('');
+    if (otpStr.length !== 6) { setError(t('enterSixDigit') || 'Enter 6-digit OTP'); return; }
+    if (!confirmRef.current) { setError(t('sessionExpired') || 'Session expired. Resend OTP.'); return; }
     setLoading(true);
     try {
-      const idToken = await verifyOTP(confirmRef.current, otp);
+      const idToken = await verifyOTP(confirmRef.current, otpStr);
       await loginWithFirebase(idToken);
       navigate('/', { replace: true });
     } catch (err) {
-      console.error('[LoginPage] verify error:', err);
-      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Verification failed.';
+      const msg = err?.response?.data?.message || err?.message || 'Verification failed.';
       setError(msg);
     } finally { setLoading(false); }
   };
 
-  const handleBack = () => { setStep('phone'); setOtp(''); setError(''); confirmRef.current = null; };
+  const handleOtpChange = (index, value) => {
+    if (!/^\d*$/.test(value)) return;
+    const next = [...otp];
+    next[index] = value.slice(-1);
+    setOtp(next);
+    if (value && index < 5) otpRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) otpRefs.current[index - 1]?.focus();
+  };
+
+  const handleOtpPaste = (e) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (pasted.length === 6) { setOtp(pasted.split('')); otpRefs.current[5]?.focus(); }
+  };
+
+  const handleResend = async () => {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return;
+    setOtp(['', '', '', '', '', '']);
+    setLoading(true);
+    try {
+      confirmRef.current = await sendOTP(normalized, 'recaptcha-container');
+      setResendTimer(30);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+    } catch (err) {
+      setError(err.message || 'Failed to resend');
+    } finally { setLoading(false); }
+  };
+
   const displayPhone = normalizePhone(phone) || phone;
 
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', padding: 24,
-      background: 'var(--bg-0)',
-    }}>
-      {/* Language switcher at top right */}
-      <div style={{ position: 'absolute', top: 20, right: 20 }}>
-        <div className="lang-toggle">
-          <button className={`lang-toggle-option ${lang === 'en' ? 'active' : ''}`} onClick={() => changeLang('en')}>EN</button>
-          <button className={`lang-toggle-option ${lang === 'hi' ? 'active' : ''}`} onClick={() => changeLang('hi')}>हि</button>
+    <div className="login-page">
+      {/* Grid texture */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0,
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
+        backgroundSize: '44px 44px',
+        maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
+        WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
+      }} />
+
+      <div className="login-card" style={{ position: 'relative', zIndex: 1 }}>
+
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{
+            width: 48, height: 48,
+            background: 'var(--accent)',
+            borderRadius: 14,
+            display: 'grid', placeItems: 'center',
+            color: '#fff',
+            boxShadow: '0 0 20px var(--accent-glow)',
+            flexShrink: 0,
+          }}>
+            <Package size={24} strokeWidth={2.5} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
+              Bhada
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '0.1em' }}>
+              DELIVERY APP
+            </div>
+          </div>
+
+          {/* Language toggle */}
+          <div style={{ marginLeft: 'auto' }}>
+            <div className="seg-control" style={{ width: 'fit-content' }}>
+              {['en', 'hi'].map(l => (
+                <button key={l} className={`seg-option${lang === l ? ' active' : ''}`}
+                  onClick={() => changeLang(l)} style={{ minWidth: 36 }}>
+                  {l === 'en' ? 'EN' : 'हि'}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Logo */}
-      <div style={{ marginBottom: 40, textAlign: 'center' }}>
-        <div style={{
-          width: 64, height: 64, background: 'var(--accent)',
-          borderRadius: 18, display: 'grid', placeItems: 'center',
-          fontSize: 32, fontFamily: 'var(--font-display)', fontWeight: 800,
-          color: 'var(--bg-0)', margin: '0 auto 14px',
-        }}>B</div>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>
-          Bhada
+        {/* Step indicator */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 28 }}>
+          {[0, 1].map(i => (
+            <div key={i} style={{
+              height: 3, flex: 1, borderRadius: 99,
+              background: (step === 'otp' ? i <= 1 : i === 0) ? 'var(--accent)' : 'var(--bg-subtle)',
+              transition: 'background 0.3s ease',
+              boxShadow: (step === 'otp' ? i <= 1 : i === 0) ? '0 0 8px var(--accent-glow)' : 'none',
+            }} />
+          ))}
         </div>
-        <div style={{ color: 'var(--text-2)', fontSize: 13, marginTop: 4 }}>
-          Fast, reliable parcel delivery
-        </div>
-      </div>
 
-      {/* Card */}
-      <div className="card" style={{ width: '100%', maxWidth: 380 }}>
-        <div
-          id="recaptcha-container"
-          style={{
-            marginBottom: step === 'phone' ? 16 : 0,
-            display: 'flex', justifyContent: 'center',
-            height: step === 'otp' ? 0 : undefined, overflow: 'hidden',
-          }}
-        />
-
-        {step === 'phone' ? (
-          <form onSubmit={handleSendOTP}>
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
-                {t('welcomeBack')}
-              </div>
-              <div style={{ color: 'var(--text-2)', fontSize: 13 }}>{t('enterMobile')}</div>
-            </div>
-
-            <div className="input-group" style={{ marginBottom: 16 }}>
-              <label className="input-label">{t('mobileNumber')}</label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <span style={{
-                  position: 'absolute', left: 12, zIndex: 1,
-                  fontSize: 15, color: 'var(--text-1)',
-                  fontFamily: 'var(--font-mono)', pointerEvents: 'none', userSelect: 'none',
-                }}>+91</span>
-                <input
-                  className="input" type="tel" inputMode="numeric"
-                  placeholder="98765 43210" value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  style={{ paddingLeft: 44 }} autoFocus
-                />
-              </div>
-            </div>
-
-            {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 12, fontFamily: 'var(--font-mono)' }}>⚠ {error}</div>}
-
-            <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-              {loading ? t('sending') : t('sendOtp')}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerifyOTP}>
-            <div style={{ marginBottom: 20 }}>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 12, padding: '4px 0' }} onClick={handleBack}>
-                {t('back')}
-              </button>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
-                {t('enterOtp')}
-              </div>
-              <div style={{ color: 'var(--text-2)', fontSize: 13 }}>
-                {t('sentTo')} <span style={{ color: 'var(--text-0)' }}>{displayPhone}</span>
-              </div>
-            </div>
-
-            <div className="input-group" style={{ marginBottom: 16 }}>
-              <label className="input-label">{t('sixDigitOtp')}</label>
-              <input
-                className="input" type="text" inputMode="numeric"
-                pattern="[0-9]*" maxLength={6} placeholder="000000" value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                style={{ fontSize: 22, letterSpacing: 8, textAlign: 'center', fontFamily: 'var(--font-mono)' }}
-                autoFocus
-              />
-            </div>
-
-            {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 12, fontFamily: 'var(--font-mono)' }}>⚠ {error}</div>}
-
-            <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-              {loading ? t('verifying') : t('verifyLogin')}
-            </button>
-          </form>
+        {/* Error */}
+        {error && (
+          <div className="alert alert-error" style={{ marginBottom: 16 }}>
+            <span style={{ fontSize: 14 }}>⚠</span>
+            <span>{error}</span>
+          </div>
         )}
-      </div>
 
-      <div style={{ color: 'var(--text-2)', fontSize: 11, marginTop: 24, textAlign: 'center' }}>
-        {t('terms')}
+        {/* STEP 1: Phone */}
+        {step === 'phone' && (
+          <div style={{ animation: 'slideUp 0.22s ease' }}>
+            <div id="recaptcha-container" />
+            <h1 style={{ fontWeight: 800, fontSize: 24, color: 'var(--text-primary)', marginBottom: 8, letterSpacing: '-0.03em' }}>
+              Welcome back
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 28, lineHeight: 1.6 }}>
+              {t('enterPhone') || 'Enter your phone number to receive an OTP'}
+            </p>
+            <form onSubmit={handleSendOTP}>
+              <div className="form-group">
+                <label className="form-label">Phone Number</label>
+                <div style={{ position: 'relative' }}>
+                  <Phone size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
+                  <input
+                    className="input"
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={phone}
+                    onChange={e => { setPhone(e.target.value); setError(''); }}
+                    style={{ paddingLeft: 38 }}
+                    autoFocus required
+                  />
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6 }}>
+                  10-digit numbers get +91 automatically
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary btn-lg" disabled={loading || !phone.trim()}>
+                {loading
+                  ? <><div className="loader-sm" style={{ borderTopColor: '#fff' }} /> Sending OTP...</>
+                  : <><Phone size={15} /> Send OTP</>
+                }
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* STEP 2: OTP */}
+        {step === 'otp' && (
+          <div style={{ animation: 'slideUp 0.22s ease' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ marginBottom: 16, padding: '4px 0', color: 'var(--text-secondary)' }}
+              onClick={() => { setStep('phone'); setOtp(['','','','','','']); setError(''); confirmRef.current = null; }}
+            >
+              <ArrowLeft size={14} /> Back
+            </button>
+            <h1 style={{ fontWeight: 800, fontSize: 24, color: 'var(--text-primary)', marginBottom: 8, letterSpacing: '-0.03em' }}>
+              Enter OTP
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 28, lineHeight: 1.6 }}>
+              {t('sentTo') || 'Sent to'}{' '}
+              <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{displayPhone}</strong>
+            </p>
+            <form onSubmit={handleVerifyOTP}>
+              <div
+                style={{ display: 'flex', gap: 8, justifyContent: 'center', margin: '0 0 28px' }}
+                onPaste={handleOtpPaste}
+              >
+                {otp.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={el => otpRefs.current[i] = el}
+                    type="text" inputMode="numeric" maxLength={1}
+                    value={digit}
+                    onChange={e => handleOtpChange(i, e.target.value)}
+                    onKeyDown={e => handleOtpKeyDown(i, e)}
+                    autoFocus={i === 0}
+                    style={{
+                      width: 46, height: 54, textAlign: 'center',
+                      fontSize: 22, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                      background: digit ? 'var(--accent-dim)' : 'var(--bg-elevated)',
+                      border: `1.5px solid ${digit ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: 10, color: digit ? 'var(--accent)' : 'var(--text-primary)',
+                      outline: 'none', transition: 'all 0.15s ease', caretColor: 'var(--accent)',
+                    }}
+                  />
+                ))}
+              </div>
+              <button type="submit" className="btn btn-primary btn-lg" disabled={loading || otp.join('').length !== 6}>
+                {loading
+                  ? <><div className="loader-sm" style={{ borderTopColor: '#fff' }} /> Verifying...</>
+                  : <><Shield size={15} /> Verify &amp; Sign In</>
+                }
+              </button>
+              <div style={{ textAlign: 'center', marginTop: 18 }}>
+                {resendTimer > 0 ? (
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    Resend in{' '}
+                    <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                      {resendTimer}s
+                    </span>
+                  </span>
+                ) : (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleResend} disabled={loading}
+                    style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    <RefreshCw size={12} /> Resend OTP
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        )}
+
       </div>
     </div>
   );

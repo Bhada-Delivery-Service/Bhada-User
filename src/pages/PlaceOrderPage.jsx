@@ -205,6 +205,16 @@ function AddressSheet({ title, savedAddresses, onPick, onManual, onClose }) {
 
 /* ─── Address Form ────────────────────────────────────────────────────────── */
 function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
+  const [gpsLoading, setGpsLoading] = React.useState(false);
+  const [gpsError,   setGpsError]   = React.useState('');
+  const [showMap,    setShowMap]     = React.useState(false);
+  const [mapCenter,  setMapCenter]   = React.useState(null);
+  const mapRef      = React.useRef(null);
+  const markerRef   = React.useRef(null);
+  const mapObjRef   = React.useRef(null);
+
+  const GMAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
   const FULL = [
     { key:'area',           label:'Area / Locality', ph:'Andheri West' },
     { key:'buildingOrFlat', label:'Building / Flat', ph:'A-204, Sunrise Apt' },
@@ -217,30 +227,224 @@ function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
     { key:'contactPerson', label:'Contact Person',  ph:'John Doe' },
     { key:'contactNumber', label:'Contact Number',  ph:'+91XXXXXXXXXX' },
   ];
+
+  // ── GPS: get current location ──────────────────────────────────────────
+  const handleGPS = () => {
+    if (!navigator.geolocation) { setGpsError('GPS not supported on this device'); return; }
+    setGpsLoading(true);
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = parseFloat(pos.coords.latitude.toFixed(6));
+        const lng = parseFloat(pos.coords.longitude.toFixed(6));
+        onChange({ ...addr, latitude: lat, longitude: lng });
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsError(
+          err.code === 1 ? 'Location permission denied. Please allow in browser settings.' :
+          err.code === 2 ? 'Location unavailable. Try again.' :
+          'GPS timed out. Try again.'
+        );
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  // ── Map picker: open modal and load Google Maps ────────────────────────
+  const handleOpenMap = () => {
+    if (!GMAP_KEY) {
+      setGpsError('Google Maps API key not configured. Please use GPS or enter coordinates manually.');
+      return;
+    }
+    const initLat = addr.latitude  || 19.0760;
+    const initLng = addr.longitude || 72.8777;
+    setMapCenter({ lat: initLat, lng: initLng });
+    setShowMap(true);
+  };
+
+  React.useEffect(() => {
+    if (!showMap || !mapRef.current) return;
+    const initLat = addr.latitude  || 19.0760;
+    const initLng = addr.longitude || 72.8777;
+
+    function initMap(maps) {
+      const center = { lat: initLat, lng: initLng };
+      const map = new maps.Map(mapRef.current, {
+        center,
+        zoom: 16,
+        disableDefaultUI: true,
+        zoomControl: true,
+        styles: [{ featureType:'poi', elementType:'labels', stylers:[{ visibility:'off' }] }],
+      });
+      mapObjRef.current = map;
+      const marker = new maps.Marker({
+        position: center, map, draggable: true,
+        icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor:'var(--accent,#1EC674)', fillOpacity:1, strokeColor:'#fff', strokeWeight:2 },
+      });
+      markerRef.current = marker;
+      // Update coords on drag
+      marker.addListener('dragend', () => {
+        const pos = marker.getPosition();
+        setMapCenter({ lat: pos.lat(), lng: pos.lng() });
+      });
+      // Also update on map click
+      map.addListener('click', (e) => {
+        marker.setPosition(e.latLng);
+        setMapCenter({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      });
+    }
+
+    if (window.google?.maps) {
+      initMap(window.google.maps);
+    } else if (GMAP_KEY) {
+      const existing = document.getElementById('gmap-script');
+      if (existing) {
+        existing.addEventListener('load', () => initMap(window.google.maps));
+      } else {
+        const s = document.createElement('script');
+        s.id = 'gmap-script';
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAP_KEY}`;
+        s.async = true;
+        s.onload = () => initMap(window.google.maps);
+        document.head.appendChild(s);
+      }
+    }
+  }, [showMap]);
+
+  const confirmMap = () => {
+    if (mapCenter) {
+      onChange({ ...addr, latitude: parseFloat(mapCenter.lat.toFixed(6)), longitude: parseFloat(mapCenter.lng.toFixed(6)) });
+    }
+    setShowMap(false);
+  };
+
+  const hasCoords = addr.latitude && addr.longitude;
+
   return (
     <div className="col gap-10">
-      {savedAddresses?.length > 0 && <button className="btn btn-secondary" style={{ alignSelf:'flex-start' }} onClick={onPickSaved}><Star size={13}/> Pick from saved</button>}
+      {savedAddresses?.length > 0 && (
+        <button className="btn btn-secondary" style={{ alignSelf:'flex-start' }} onClick={onPickSaved}>
+          <Star size={13}/> Pick from saved
+        </button>
+      )}
+
+      {/* ── Coordinates section — TOP so user sees it first ── */}
+      <div style={{ background:'var(--bg-elevated)', border:`1.5px solid ${hasCoords ? 'rgba(30,198,116,0.35)' : 'var(--border-md)'}`, borderRadius:'var(--radius-sm)', padding:'12px 14px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <div style={{ fontSize:11, fontWeight:700, color: hasCoords ? 'var(--accent)' : 'var(--text-tertiary)', letterSpacing:'0.06em', textTransform:'uppercase', display:'flex', alignItems:'center', gap:5 }}>
+            <MapPin size={12}/> Location Coordinates {hasCoords ? '✓' : '(Required)'}
+          </div>
+          {hasCoords && (
+            <span style={{ fontSize:10, fontFamily:'var(--font-mono)', color:'var(--text-tertiary)' }}>
+              {Number(addr.latitude).toFixed(5)}, {Number(addr.longitude).toFixed(5)}
+            </span>
+          )}
+        </div>
+
+        {/* GPS + Map buttons */}
+        <div style={{ display:'flex', gap:8, marginBottom: gpsError ? 8 : 0 }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ flex:1, height:40, fontSize:13 }}
+            onClick={handleGPS}
+            disabled={gpsLoading}
+          >
+            {gpsLoading
+              ? <><div className="loader-sm" style={{ borderTopColor:'#fff' }}/> Detecting…</>
+              : <><MapPin size={14}/> Use My Location</>
+            }
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ flex:1, height:40, fontSize:13 }}
+            onClick={handleOpenMap}
+          >
+            🗺 Pick on Map
+          </button>
+        </div>
+
+        {gpsError && (
+          <div style={{ fontSize:12, color:'var(--red)', display:'flex', alignItems:'center', gap:5, marginTop:4 }}>
+            <AlertCircle size={12}/> {gpsError}
+          </div>
+        )}
+
+        {/* Manual lat/lng fallback */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:10 }}>
+          <div>
+            <label className="form-label">Latitude</label>
+            <input className="input" type="number" step="0.000001" placeholder="19.0760"
+              value={addr.latitude ?? ''}
+              onChange={e => onChange({ ...addr, latitude: e.target.value === '' ? null : +e.target.value })}/>
+          </div>
+          <div>
+            <label className="form-label">Longitude</label>
+            <input className="input" type="number" step="0.000001" placeholder="72.8777"
+              value={addr.longitude ?? ''}
+              onChange={e => onChange({ ...addr, longitude: e.target.value === '' ? null : +e.target.value })}/>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Address fields ── */}
       {FULL.map(({ key, label, ph }) => (
-        <div key={key} className="form-group"><label className="form-label">{label}</label>
-          <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/></div>
+        <div key={key} className="form-group">
+          <label className="form-label">{label}</label>
+          <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/>
+        </div>
       ))}
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         {HALF.map(({ key, label, ph }) => (
-          <div key={key} className="form-group"><label className="form-label">{label}</label>
-            <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/></div>
+          <div key={key} className="form-group">
+            <label className="form-label">{label}</label>
+            <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/>
+          </div>
         ))}
-        <div className="form-group"><label className="form-label">Latitude *</label>
-          <input className="input" type="number" step="0.000001" placeholder="e.g. 19.0760 (required)"
-            value={addr.latitude ?? ''}
-            onChange={e => onChange({ ...addr, latitude: e.target.value === '' ? null : +e.target.value })}/></div>
-        <div className="form-group"><label className="form-label">Longitude *</label>
-          <input className="input" type="number" step="0.000001" placeholder="e.g. 72.8777 (required)"
-            value={addr.longitude ?? ''}
-            onChange={e => onChange({ ...addr, longitude: e.target.value === '' ? null : +e.target.value })}/></div>
       </div>
+
+      {/* ── Map Picker Modal ── */}
+      {showMap && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:2000, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end' }}>
+          <div style={{ width:'100%', maxWidth:480, background:'var(--bg-surface)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0', overflow:'hidden', boxShadow:'0 -8px 40px rgba(0,0,0,0.5)' }}>
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 16px', borderBottom:'1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>📍 Pick Location on Map</div>
+                <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>Drag the pin or tap to move it</div>
+              </div>
+              <button onClick={() => setShowMap(false)} style={{ background:'var(--bg-elevated)', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--text-secondary)' }}>
+                <X size={14}/>
+              </button>
+            </div>
+
+            {/* Map */}
+            <div ref={mapRef} style={{ width:'100%', height:340 }}/>
+
+            {/* Coords display */}
+            {mapCenter && (
+              <div style={{ padding:'10px 16px', background:'var(--bg-elevated)', borderTop:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                  <span style={{ fontFamily:'var(--font-mono)', color:'var(--accent)' }}>
+                    {mapCenter.lat.toFixed(5)}, {mapCenter.lng.toFixed(5)}
+                  </span>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={confirmMap}>
+                  <Check size={12}/> Confirm Location
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 /* ─── Bill Card ───────────────────────────────────────────────────────────── */
 function BillCard({ billing: b, offerApplied }) {
