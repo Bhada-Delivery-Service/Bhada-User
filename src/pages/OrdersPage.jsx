@@ -459,7 +459,7 @@ export function OrderDetailPage() {
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.PLACED;
   const currentIdx = STATUS_ORDER.indexOf(order.status);
   const placedSub = order.status === 'PLACED' ? getPlacedSubState(order) : null;
-  const canCancel = ['PLACED', 'DRAFT'].includes(order.status);
+  const canCancel = ['PLACED', 'DRAFT', 'READY'].includes(order.status);
   const canHandover = order.status === 'READY';
   // Fix 1: Allow sender to mark ready any time order is PLACED (with or without rider assigned)
   const canMarkReady = order.status === 'PLACED' && !order.senderReady;
