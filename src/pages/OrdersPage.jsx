@@ -974,5 +974,5 @@ export function OrderDetailPage() {
         )}
       </div>
     </div>
-  );
+  );    
 }   
