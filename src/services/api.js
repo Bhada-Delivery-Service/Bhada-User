@@ -171,3 +171,9 @@ export const feedbackAPI = {
   submit:  (data)  => api.post('/feedback', data),
   getMy:   ()      => api.get('/feedback/my'),
 };
+// ── Item Catalog (dynamic sizes, types, categories from admin) ────────────────
+export const itemCatalogAPI = {
+  getSizes:      () => api.get('/item-catalog/sizes?activeOnly=true'),
+  getTypes:      () => api.get('/item-catalog/types?activeOnly=true'),
+  getCategories: () => api.get('/item-catalog/categories?activeOnly=true'),
+};
