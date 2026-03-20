@@ -205,13 +205,19 @@ function AddressSheet({ title, savedAddresses, onPick, onManual, onClose }) {
 
 /* ─── Address Form ────────────────────────────────────────────────────────── */
 function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
-  const [gpsLoading, setGpsLoading] = React.useState(false);
-  const [gpsError,   setGpsError]   = React.useState('');
-  const [showMap,    setShowMap]     = React.useState(false);
-  const [mapCenter,  setMapCenter]   = React.useState(null);
-  const mapRef      = React.useRef(null);
-  const markerRef   = React.useRef(null);
-  const mapObjRef   = React.useRef(null);
+  const [gpsLoading,    setGpsLoading]    = React.useState(false);
+  const [gpsError,      setGpsError]      = React.useState('');
+  const [showMap,       setShowMap]        = React.useState(false);
+  const [mapCenter,     setMapCenter]      = React.useState(null);
+  const [searchQuery,   setSearchQuery]    = React.useState('');
+  const [suggestions,   setSuggestions]    = React.useState([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [searchLoading, setSearchLoading] = React.useState(false);
+  const mapRef           = React.useRef(null);
+  const markerRef        = React.useRef(null);
+  const mapObjRef        = React.useRef(null);
+  const autocompleteRef  = React.useRef(null);
+  const searchDebounceRef = React.useRef(null);
 
   const GMAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -296,28 +302,142 @@ function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
       });
     }
 
-    if (window.google?.maps) {
-      initMap(window.google.maps);
-    } else if (GMAP_KEY) {
-      const existing = document.getElementById('gmap-script');
-      if (existing) {
-        existing.addEventListener('load', () => initMap(window.google.maps));
-      } else {
-        const s = document.createElement('script');
-        s.id = 'gmap-script';
-        s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAP_KEY}`;
-        s.async = true;
-        s.onload = () => initMap(window.google.maps);
-        document.head.appendChild(s);
+    const loadAndInit = () => {
+      if (window.google?.maps?.places) {
+        initMap(window.google.maps);
+        return;
       }
-    }
+      if (!GMAP_KEY) return;
+      // Remove any existing script that may have been loaded without 'places'
+      const existing = document.getElementById('gmap-script');
+      if (existing) existing.remove();
+      const s = document.createElement('script');
+      s.id = 'gmap-script';
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAP_KEY}&libraries=places`;
+      s.async = true;
+      s.onload = () => initMap(window.google.maps);
+      document.head.appendChild(s);
+    };
+    loadAndInit();
   }, [showMap]);
 
+  const [geocoding, setGeocoding] = React.useState(false);
+
   const confirmMap = () => {
-    if (mapCenter) {
-      onChange({ ...addr, latitude: parseFloat(mapCenter.lat.toFixed(6)), longitude: parseFloat(mapCenter.lng.toFixed(6)) });
+    if (!mapCenter) { setShowMap(false); return; }
+    const lat = parseFloat(mapCenter.lat.toFixed(6));
+    const lng = parseFloat(mapCenter.lng.toFixed(6));
+
+    // Helper: extract a component value by type(s)
+    const getComp = (comps, ...types) => {
+      for (const type of types) {
+        const c = comps.find(c => c.types.includes(type));
+        if (c) return c.long_name;
+      }
+      return '';
+    };
+    const getCompShort = (comps, type) => {
+      const c = comps.find(c => c.types.includes(type));
+      return c ? c.short_name : '';
+    };
+
+    if (window.google?.maps) {
+      setGeocoding(true);
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        setGeocoding(false);
+        let filled = { ...addr, latitude: lat, longitude: lng };
+        if (status === 'OK' && results?.length) {
+          // Prefer street_address or route result, else fall back to first
+          const best = results.find(r =>
+            r.types.includes('street_address') || r.types.includes('route') || r.types.includes('premise')
+          ) || results[0];
+          const comps = best.address_components;
+
+          const streetNum  = getComp(comps, 'street_number');
+          const route      = getComp(comps, 'route');
+          const sublocality = getComp(comps, 'sublocality_level_1', 'sublocality', 'neighborhood');
+          const locality   = getComp(comps, 'locality');
+          const adminL2    = getComp(comps, 'administrative_area_level_2');
+          const adminL1    = getComp(comps, 'administrative_area_level_1');
+          const postal     = getComp(comps, 'postal_code');
+
+          const street = [streetNum, route].filter(Boolean).join(' ');
+
+          filled = {
+            ...filled,
+            street:      street      || filled.street      || '',
+            area:        sublocality || filled.area        || '',
+            city:        locality    || adminL2             || filled.city  || '',
+            state:       adminL1     || filled.state       || '',
+            postalCode:  postal      || filled.postalCode  || '',
+          };
+        }
+        onChange(filled);
+        setShowMap(false);
+        setSearchQuery('');
+        setSuggestions([]);
+      });
+    } else {
+      onChange({ ...addr, latitude: lat, longitude: lng });
+      setShowMap(false);
+      setSearchQuery('');
+      setSuggestions([]);
     }
-    setShowMap(false);
+  };
+
+  // ── Location search with Places Autocomplete ───────────────────────────
+  const sessionTokenRef = React.useRef(null);
+
+  const handleSearchInput = (val) => {
+    setSearchQuery(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!val.trim() || val.length < 3) { setSuggestions([]); setShowSuggestions(false); return; }
+    searchDebounceRef.current = setTimeout(() => {
+      if (!window.google?.maps?.places) return;
+      if (!sessionTokenRef.current) {
+        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+      }
+      setSearchLoading(true);
+      const service = new window.google.maps.places.AutocompleteService();
+      service.getPlacePredictions(
+        { input: val, sessionToken: sessionTokenRef.current },
+        (predictions, status) => {
+          setSearchLoading(false);
+          const OK = window.google.maps.places.PlacesServiceStatus.OK;
+          if (status === OK && predictions?.length) {
+            setSuggestions(predictions);
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+        }
+      );
+    }, 350);
+  };
+
+  const handleSelectSuggestion = (placeId, description) => {
+    setSearchQuery(description);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    sessionTokenRef.current = null; // reset token after selection
+    if (!window.google?.maps) return;
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ placeId }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const loc = results[0].geometry.location;
+        const newCenter = { lat: loc.lat(), lng: loc.lng() };
+        setMapCenter(newCenter);
+        if (mapObjRef.current) {
+          mapObjRef.current.setCenter(newCenter);
+          mapObjRef.current.setZoom(17);
+        }
+        if (markerRef.current) {
+          markerRef.current.setPosition(newCenter);
+        }
+      }
+    });
   };
 
   const hasCoords = addr.latitude && addr.longitude;
@@ -417,9 +537,53 @@ function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
                 <div style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>📍 Pick Location on Map</div>
                 <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>Drag the pin or tap to move it</div>
               </div>
-              <button onClick={() => setShowMap(false)} style={{ background:'var(--bg-elevated)', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--text-secondary)' }}>
+              <button onClick={() => { setShowMap(false); setSearchQuery(''); setSuggestions([]); }} style={{ background:'var(--bg-elevated)', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--text-secondary)' }}>
                 <X size={14}/>
               </button>
+            </div>
+
+            {/* Search Bar */}
+            <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border)', background:'var(--bg-elevated)', position:'relative' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, background:'var(--bg-surface)', border:'1.5px solid var(--border-md)', borderRadius:10, padding:'7px 12px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  type="text"
+                  placeholder="Search for a place or address…"
+                  value={searchQuery}
+                  onChange={e => handleSearchInput(e.target.value)}
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  style={{ flex:1, border:'none', background:'transparent', outline:'none', fontSize:13, color:'var(--text-primary)', minWidth:0 }}
+                  autoComplete="off"
+                />
+                {searchLoading && <div className="loader-sm" style={{ width:14, height:14, borderWidth:2, flexShrink:0 }}/>}
+                {searchQuery && !searchLoading && (
+                  <button onClick={() => { setSearchQuery(''); setSuggestions([]); setShowSuggestions(false); }} style={{ background:'none', border:'none', cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'var(--text-tertiary)' }}>
+                    <X size={13}/>
+                  </button>
+                )}
+              </div>
+              {/* Suggestions dropdown */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div style={{ position:'absolute', left:12, right:12, top:'100%', marginTop:2, background:'var(--bg-surface)', border:'1px solid var(--border-md)', borderRadius:10, overflow:'hidden', zIndex:10, boxShadow:'0 4px 20px rgba(0,0,0,0.25)', maxHeight:220, overflowY:'auto' }}>
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.place_id}
+                      onClick={() => handleSelectSuggestion(s.place_id, s.description)}
+                      style={{ display:'flex', alignItems:'flex-start', gap:10, width:'100%', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid var(--border)', cursor:'pointer', textAlign:'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <svg style={{ marginTop:1, flexShrink:0 }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      <div>
+                        <div style={{ fontSize:13, color:'var(--text-primary)', fontWeight:600, lineHeight:1.3 }}>{s.structured_formatting?.main_text || s.description}</div>
+                        {s.structured_formatting?.secondary_text && (
+                          <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2, lineHeight:1.3 }}>{s.structured_formatting.secondary_text}</div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Map */}
@@ -433,8 +597,11 @@ function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
                     {mapCenter.lat.toFixed(5)}, {mapCenter.lng.toFixed(5)}
                   </span>
                 </div>
-                <button className="btn btn-primary btn-sm" onClick={confirmMap}>
-                  <Check size={12}/> Confirm Location
+                <button className="btn btn-primary btn-sm" onClick={confirmMap} disabled={geocoding} style={{ minWidth:140 }}>
+                  {geocoding
+                    ? <><div className="loader-sm" style={{ borderTopColor:'#fff', width:11, height:11, borderWidth:2 }}/> Filling address…</>
+                    : <><Check size={12}/> Confirm Location</>
+                  }
                 </button>
               </div>
             )}
