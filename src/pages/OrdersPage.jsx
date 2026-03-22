@@ -462,7 +462,7 @@ export function OrderDetailPage() {
   const canCancel = ['PLACED', 'DRAFT', 'READY'].includes(order.status);
   const canHandover = order.status === 'READY';
   // Fix 1: Allow sender to mark ready any time order is PLACED (with or without rider assigned)
-  const canMarkReady = order.status === 'PLACED' && !order.senderReady;
+  const canMarkReady = order.status === 'PLACED' && !order.senderReady && order.isSender;
   // Fix 3: Show drop OTP to receiver when order is DISPATCHED
   const showDropOtp = order.status === 'DISPATCHED' && order.dropOtp;
 
