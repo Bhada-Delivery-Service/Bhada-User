@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -170,4 +170,10 @@ export const ridersAPI = {
 export const feedbackAPI = {
   submit:  (data)  => api.post('/feedback', data),
   getMy:   ()      => api.get('/feedback/my'),
+};
+// ── Item Catalog (dynamic sizes, types, categories from admin) ────────────────
+export const itemCatalogAPI = {
+  getSizes:      () => api.get('/item-catalog/sizes?activeOnly=true'),
+  getTypes:      () => api.get('/item-catalog/types?activeOnly=true'),
+  getCategories: () => api.get('/item-catalog/categories?activeOnly=true'),
 };

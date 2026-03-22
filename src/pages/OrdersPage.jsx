@@ -350,7 +350,10 @@ export function OrderDetailPage() {
     }
   }, [id]);
   useEffect(() => {
-    if (order?.status === 'CANCELLED' && order?.billing?.paymentMode !== 'COD') {
+    // Only load refund for orders that were actually PLACED (have a placedAt timestamp).
+    // DRAFT orders were never paid — server won't create a refund for them after our fix.
+    const wasDraft = !order?.placedAt;
+    if (order?.status === 'CANCELLED' && order?.billing?.paymentMode !== 'COD' && !wasDraft) {
       loadRefund();
     }
   }, [order?.status, id]);
@@ -456,10 +459,10 @@ export function OrderDetailPage() {
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.PLACED;
   const currentIdx = STATUS_ORDER.indexOf(order.status);
   const placedSub = order.status === 'PLACED' ? getPlacedSubState(order) : null;
-  const canCancel = ['PLACED', 'DRAFT'].includes(order.status);
+  const canCancel = ['PLACED', 'DRAFT', 'READY'].includes(order.status);
   const canHandover = order.status === 'READY';
   // Fix 1: Allow sender to mark ready any time order is PLACED (with or without rider assigned)
-  const canMarkReady = order.status === 'PLACED' && !order.senderReady;
+  const canMarkReady = order.status === 'PLACED' && !order.senderReady && order.isSender;
   // Fix 3: Show drop OTP to receiver when order is DISPATCHED
   const showDropOtp = order.status === 'DISPATCHED' && order.dropOtp;
 
@@ -816,8 +819,8 @@ export function OrderDetailPage() {
           </div>
         )}
 
-        {/* Refund Section — shown for cancelled online-payment orders */}
-        {order.status === 'CANCELLED' && order.billing?.paymentMode !== 'COD' && (
+        {/* Refund Section — shown for cancelled online-payment orders that were actually placed */}
+        {order.status === 'CANCELLED' && order.billing?.paymentMode !== 'COD' && !!order.placedAt && (
           <div className="card" style={{ marginBottom: 'var(--sp-12)', borderColor: refund?.status === 'REFUNDED' ? 'rgba(22,163,74,0.3)' : refund?.status === 'SKIPPED' ? 'rgba(220,38,38,0.2)' : 'rgba(251,146,60,0.3)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--sp-10)' }}>
               <CreditCard size={16} color={refund?.status === 'REFUNDED' ? 'var(--green)' : refund?.status === 'SKIPPED' ? 'var(--red)' : 'var(--orange)'} />
@@ -971,5 +974,5 @@ export function OrderDetailPage() {
         )}
       </div>
     </div>
-  );
-}
+  );    
+}   

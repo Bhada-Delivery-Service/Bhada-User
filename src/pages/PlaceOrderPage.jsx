@@ -7,21 +7,21 @@ import {
   Info, ChevronDown, ChevronUp, Package, Camera, ImagePlus, Trash2,
   User as UserIcon, Lock,
 } from 'lucide-react';
-import { ordersAPI, paymentsAPI, addressesAPI, offersAPI, filesAPI, profileAPI } from '../services/api';
+import { ordersAPI, paymentsAPI, addressesAPI, offersAPI, filesAPI, profileAPI, itemCatalogAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
-const ITEM_TYPES      = ['FRAGILE', 'NON_FRAGILE', 'PERISHABLE', 'NON_PERISHABLE', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'DOCUMENT', 'FOOD', 'OTHER'];
-const ITEM_CATEGORIES = ['DOCUMENT', 'FOOD', 'GROCERY', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'PERISHABLE', 'OTHER'];
-const ITEM_SIZES      = ['MINI', 'SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE'];
-
-const SIZE_WEIGHT = {
-  MINI:        '0 - 2 kg',
-  SMALL:       '2 - 15 kg',
-  MEDIUM:      '15 - 30 kg',
-  LARGE:       '30 - 60 kg',
-  EXTRA_LARGE: '60 - 120 kg',
-};
+// Item catalog is loaded dynamically from the server (admin-configured).
+// These are fallbacks used only while loading or if the API fails.
+const FALLBACK_ITEM_TYPES      = ['FRAGILE', 'NON_FRAGILE', 'PERISHABLE', 'NON_PERISHABLE', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'DOCUMENT', 'FOOD', 'OTHER'];
+const FALLBACK_ITEM_CATEGORIES = ['DOCUMENT', 'FOOD', 'GROCERY', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'PERISHABLE', 'OTHER'];
+const FALLBACK_ITEM_SIZES      = [
+  { key: 'MINI',        name: 'Mini',        weightMin: 0,  weightMax: 2,   dimensions: null },
+  { key: 'SMALL',       name: 'Small',       weightMin: 2,  weightMax: 15,  dimensions: null },
+  { key: 'MEDIUM',      name: 'Medium',      weightMin: 15, weightMax: 30,  dimensions: null },
+  { key: 'LARGE',       name: 'Large',       weightMin: 30, weightMax: 60,  dimensions: null },
+  { key: 'EXTRA_LARGE', name: 'Extra Large', weightMin: 60, weightMax: 120, dimensions: null },
+];
 
 const STEPS = [
   { label: 'Sender',   icon: '🙋' },
@@ -205,6 +205,22 @@ function AddressSheet({ title, savedAddresses, onPick, onManual, onClose }) {
 
 /* ─── Address Form ────────────────────────────────────────────────────────── */
 function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
+  const [gpsLoading,    setGpsLoading]    = React.useState(false);
+  const [gpsError,      setGpsError]      = React.useState('');
+  const [showMap,       setShowMap]        = React.useState(false);
+  const [mapCenter,     setMapCenter]      = React.useState(null);
+  const [searchQuery,   setSearchQuery]    = React.useState('');
+  const [suggestions,   setSuggestions]    = React.useState([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [searchLoading, setSearchLoading] = React.useState(false);
+  const mapRef           = React.useRef(null);
+  const markerRef        = React.useRef(null);
+  const mapObjRef        = React.useRef(null);
+  const autocompleteRef  = React.useRef(null);
+  const searchDebounceRef = React.useRef(null);
+
+  const GMAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
   const FULL = [
     { key:'area',           label:'Area / Locality', ph:'Andheri West' },
     { key:'buildingOrFlat', label:'Building / Flat', ph:'A-204, Sunrise Apt' },
@@ -217,30 +233,385 @@ function AddrForm({ addr, onChange, savedAddresses, onPickSaved }) {
     { key:'contactPerson', label:'Contact Person',  ph:'John Doe' },
     { key:'contactNumber', label:'Contact Number',  ph:'+91XXXXXXXXXX' },
   ];
+
+  // ── GPS: get current location ──────────────────────────────────────────
+  const handleGPS = () => {
+    if (!navigator.geolocation) { setGpsError('GPS not supported on this device'); return; }
+    setGpsLoading(true);
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = parseFloat(pos.coords.latitude.toFixed(6));
+        const lng = parseFloat(pos.coords.longitude.toFixed(6));
+        onChange({ ...addr, latitude: lat, longitude: lng });
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsError(
+          err.code === 1 ? 'Location permission denied. Please allow in browser settings.' :
+          err.code === 2 ? 'Location unavailable. Try again.' :
+          'GPS timed out. Try again.'
+        );
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  // ── Map picker: open modal and load Google Maps ────────────────────────
+  const handleOpenMap = () => {
+    if (!GMAP_KEY) {
+      setGpsError('Google Maps API key not configured. Please use GPS or enter coordinates manually.');
+      return;
+    }
+    const initLat = addr.latitude  || 19.0760;
+    const initLng = addr.longitude || 72.8777;
+    setMapCenter({ lat: initLat, lng: initLng });
+    setShowMap(true);
+  };
+
+  React.useEffect(() => {
+    if (!showMap || !mapRef.current) return;
+    const initLat = addr.latitude  || 19.0760;
+    const initLng = addr.longitude || 72.8777;
+
+    function initMap(maps) {
+      const center = { lat: initLat, lng: initLng };
+      const map = new maps.Map(mapRef.current, {
+        center,
+        zoom: 16,
+        disableDefaultUI: true,
+        zoomControl: true,
+        styles: [{ featureType:'poi', elementType:'labels', stylers:[{ visibility:'off' }] }],
+      });
+      mapObjRef.current = map;
+      const marker = new maps.Marker({
+        position: center, map, draggable: true,
+        icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor:'var(--accent,#1EC674)', fillOpacity:1, strokeColor:'#fff', strokeWeight:2 },
+      });
+      markerRef.current = marker;
+      // Update coords on drag
+      marker.addListener('dragend', () => {
+        const pos = marker.getPosition();
+        setMapCenter({ lat: pos.lat(), lng: pos.lng() });
+      });
+      // Also update on map click
+      map.addListener('click', (e) => {
+        marker.setPosition(e.latLng);
+        setMapCenter({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      });
+    }
+
+    const loadAndInit = () => {
+      if (window.google?.maps?.places) {
+        initMap(window.google.maps);
+        return;
+      }
+      if (!GMAP_KEY) return;
+      // Remove any existing script that may have been loaded without 'places'
+      const existing = document.getElementById('gmap-script');
+      if (existing) existing.remove();
+      const s = document.createElement('script');
+      s.id = 'gmap-script';
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAP_KEY}&libraries=places`;
+      s.async = true;
+      s.onload = () => initMap(window.google.maps);
+      document.head.appendChild(s);
+    };
+    loadAndInit();
+  }, [showMap]);
+
+  const [geocoding, setGeocoding] = React.useState(false);
+
+  const confirmMap = () => {
+    if (!mapCenter) { setShowMap(false); return; }
+    const lat = parseFloat(mapCenter.lat.toFixed(6));
+    const lng = parseFloat(mapCenter.lng.toFixed(6));
+
+    // Helper: extract a component value by type(s)
+    const getComp = (comps, ...types) => {
+      for (const type of types) {
+        const c = comps.find(c => c.types.includes(type));
+        if (c) return c.long_name;
+      }
+      return '';
+    };
+    const getCompShort = (comps, type) => {
+      const c = comps.find(c => c.types.includes(type));
+      return c ? c.short_name : '';
+    };
+
+    if (window.google?.maps) {
+      setGeocoding(true);
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        setGeocoding(false);
+        let filled = { ...addr, latitude: lat, longitude: lng };
+        if (status === 'OK' && results?.length) {
+          // Prefer street_address or route result, else fall back to first
+          const best = results.find(r =>
+            r.types.includes('street_address') || r.types.includes('route') || r.types.includes('premise')
+          ) || results[0];
+          const comps = best.address_components;
+
+          const streetNum  = getComp(comps, 'street_number');
+          const route      = getComp(comps, 'route');
+          const sublocality = getComp(comps, 'sublocality_level_1', 'sublocality', 'neighborhood');
+          const locality   = getComp(comps, 'locality');
+          const adminL2    = getComp(comps, 'administrative_area_level_2');
+          const adminL1    = getComp(comps, 'administrative_area_level_1');
+          const postal     = getComp(comps, 'postal_code');
+
+          const street = [streetNum, route].filter(Boolean).join(' ');
+
+          filled = {
+            ...filled,
+            street:      street      || filled.street      || '',
+            area:        sublocality || filled.area        || '',
+            city:        locality    || adminL2             || filled.city  || '',
+            state:       adminL1     || filled.state       || '',
+            postalCode:  postal      || filled.postalCode  || '',
+          };
+        }
+        onChange(filled);
+        setShowMap(false);
+        setSearchQuery('');
+        setSuggestions([]);
+      });
+    } else {
+      onChange({ ...addr, latitude: lat, longitude: lng });
+      setShowMap(false);
+      setSearchQuery('');
+      setSuggestions([]);
+    }
+  };
+
+  // ── Location search with Places Autocomplete ───────────────────────────
+  const sessionTokenRef = React.useRef(null);
+
+  const handleSearchInput = (val) => {
+    setSearchQuery(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!val.trim() || val.length < 3) { setSuggestions([]); setShowSuggestions(false); return; }
+    searchDebounceRef.current = setTimeout(() => {
+      if (!window.google?.maps?.places) return;
+      if (!sessionTokenRef.current) {
+        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+      }
+      setSearchLoading(true);
+      const service = new window.google.maps.places.AutocompleteService();
+      service.getPlacePredictions(
+        { input: val, sessionToken: sessionTokenRef.current },
+        (predictions, status) => {
+          setSearchLoading(false);
+          const OK = window.google.maps.places.PlacesServiceStatus.OK;
+          if (status === OK && predictions?.length) {
+            setSuggestions(predictions);
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+        }
+      );
+    }, 350);
+  };
+
+  const handleSelectSuggestion = (placeId, description) => {
+    setSearchQuery(description);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    sessionTokenRef.current = null; // reset token after selection
+    if (!window.google?.maps) return;
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ placeId }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const loc = results[0].geometry.location;
+        const newCenter = { lat: loc.lat(), lng: loc.lng() };
+        setMapCenter(newCenter);
+        if (mapObjRef.current) {
+          mapObjRef.current.setCenter(newCenter);
+          mapObjRef.current.setZoom(17);
+        }
+        if (markerRef.current) {
+          markerRef.current.setPosition(newCenter);
+        }
+      }
+    });
+  };
+
+  const hasCoords = addr.latitude && addr.longitude;
+
   return (
     <div className="col gap-10">
-      {savedAddresses?.length > 0 && <button className="btn btn-secondary" style={{ alignSelf:'flex-start' }} onClick={onPickSaved}><Star size={13}/> Pick from saved</button>}
+      {savedAddresses?.length > 0 && (
+        <button className="btn btn-secondary" style={{ alignSelf:'flex-start' }} onClick={onPickSaved}>
+          <Star size={13}/> Pick from saved
+        </button>
+      )}
+
+      {/* ── Coordinates section — TOP so user sees it first ── */}
+      <div style={{ background:'var(--bg-elevated)', border:`1.5px solid ${hasCoords ? 'rgba(30,198,116,0.35)' : 'var(--border-md)'}`, borderRadius:'var(--radius-sm)', padding:'12px 14px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <div style={{ fontSize:11, fontWeight:700, color: hasCoords ? 'var(--accent)' : 'var(--text-tertiary)', letterSpacing:'0.06em', textTransform:'uppercase', display:'flex', alignItems:'center', gap:5 }}>
+            <MapPin size={12}/> Location Coordinates {hasCoords ? '✓' : '(Required)'}
+          </div>
+          {hasCoords && (
+            <span style={{ fontSize:10, fontFamily:'var(--font-mono)', color:'var(--text-tertiary)' }}>
+              {Number(addr.latitude).toFixed(5)}, {Number(addr.longitude).toFixed(5)}
+            </span>
+          )}
+        </div>
+
+        {/* GPS + Map buttons */}
+        <div style={{ display:'flex', gap:8, marginBottom: gpsError ? 8 : 0 }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ flex:1, height:40, fontSize:13 }}
+            onClick={handleGPS}
+            disabled={gpsLoading}
+          >
+            {gpsLoading
+              ? <><div className="loader-sm" style={{ borderTopColor:'#fff' }}/> Detecting…</>
+              : <><MapPin size={14}/> Use My Location</>
+            }
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ flex:1, height:40, fontSize:13 }}
+            onClick={handleOpenMap}
+          >
+            🗺 Pick on Map
+          </button>
+        </div>
+
+        {gpsError && (
+          <div style={{ fontSize:12, color:'var(--red)', display:'flex', alignItems:'center', gap:5, marginTop:4 }}>
+            <AlertCircle size={12}/> {gpsError}
+          </div>
+        )}
+
+        {/* Manual lat/lng fallback */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:10 }}>
+          <div>
+            <label className="form-label">Latitude</label>
+            <input className="input" type="number" step="0.000001" placeholder="19.0760"
+              value={addr.latitude ?? ''}
+              onChange={e => onChange({ ...addr, latitude: e.target.value === '' ? null : +e.target.value })}/>
+          </div>
+          <div>
+            <label className="form-label">Longitude</label>
+            <input className="input" type="number" step="0.000001" placeholder="72.8777"
+              value={addr.longitude ?? ''}
+              onChange={e => onChange({ ...addr, longitude: e.target.value === '' ? null : +e.target.value })}/>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Address fields ── */}
       {FULL.map(({ key, label, ph }) => (
-        <div key={key} className="form-group"><label className="form-label">{label}</label>
-          <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/></div>
+        <div key={key} className="form-group">
+          <label className="form-label">{label}</label>
+          <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/>
+        </div>
       ))}
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         {HALF.map(({ key, label, ph }) => (
-          <div key={key} className="form-group"><label className="form-label">{label}</label>
-            <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/></div>
+          <div key={key} className="form-group">
+            <label className="form-label">{label}</label>
+            <input className="input" placeholder={ph} value={addr[key]||''} onChange={e => onChange({ ...addr, [key]:e.target.value })}/>
+          </div>
         ))}
-        <div className="form-group"><label className="form-label">Latitude *</label>
-          <input className="input" type="number" step="0.000001" placeholder="e.g. 19.0760 (required)"
-            value={addr.latitude ?? ''}
-            onChange={e => onChange({ ...addr, latitude: e.target.value === '' ? null : +e.target.value })}/></div>
-        <div className="form-group"><label className="form-label">Longitude *</label>
-          <input className="input" type="number" step="0.000001" placeholder="e.g. 72.8777 (required)"
-            value={addr.longitude ?? ''}
-            onChange={e => onChange({ ...addr, longitude: e.target.value === '' ? null : +e.target.value })}/></div>
       </div>
+
+      {/* ── Map Picker Modal ── */}
+      {showMap && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:2000, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end' }}>
+          <div style={{ width:'100%', maxWidth:480, background:'var(--bg-surface)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0', overflow:'hidden', boxShadow:'0 -8px 40px rgba(0,0,0,0.5)' }}>
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 16px', borderBottom:'1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>📍 Pick Location on Map</div>
+                <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2 }}>Drag the pin or tap to move it</div>
+              </div>
+              <button onClick={() => { setShowMap(false); setSearchQuery(''); setSuggestions([]); }} style={{ background:'var(--bg-elevated)', border:'1px solid var(--border)', borderRadius:8, width:32, height:32, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--text-secondary)' }}>
+                <X size={14}/>
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border)', background:'var(--bg-elevated)', position:'relative' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, background:'var(--bg-surface)', border:'1.5px solid var(--border-md)', borderRadius:10, padding:'7px 12px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  type="text"
+                  placeholder="Search for a place or address…"
+                  value={searchQuery}
+                  onChange={e => handleSearchInput(e.target.value)}
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  style={{ flex:1, border:'none', background:'transparent', outline:'none', fontSize:13, color:'var(--text-primary)', minWidth:0 }}
+                  autoComplete="off"
+                />
+                {searchLoading && <div className="loader-sm" style={{ width:14, height:14, borderWidth:2, flexShrink:0 }}/>}
+                {searchQuery && !searchLoading && (
+                  <button onClick={() => { setSearchQuery(''); setSuggestions([]); setShowSuggestions(false); }} style={{ background:'none', border:'none', cursor:'pointer', padding:0, display:'grid', placeItems:'center', color:'var(--text-tertiary)' }}>
+                    <X size={13}/>
+                  </button>
+                )}
+              </div>
+              {/* Suggestions dropdown */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div style={{ position:'absolute', left:12, right:12, top:'100%', marginTop:2, background:'var(--bg-surface)', border:'1px solid var(--border-md)', borderRadius:10, overflow:'hidden', zIndex:10, boxShadow:'0 4px 20px rgba(0,0,0,0.25)', maxHeight:220, overflowY:'auto' }}>
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.place_id}
+                      onClick={() => handleSelectSuggestion(s.place_id, s.description)}
+                      style={{ display:'flex', alignItems:'flex-start', gap:10, width:'100%', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid var(--border)', cursor:'pointer', textAlign:'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-elevated)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <svg style={{ marginTop:1, flexShrink:0 }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      <div>
+                        <div style={{ fontSize:13, color:'var(--text-primary)', fontWeight:600, lineHeight:1.3 }}>{s.structured_formatting?.main_text || s.description}</div>
+                        {s.structured_formatting?.secondary_text && (
+                          <div style={{ fontSize:11, color:'var(--text-tertiary)', marginTop:2, lineHeight:1.3 }}>{s.structured_formatting.secondary_text}</div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Map */}
+            <div ref={mapRef} style={{ width:'100%', height:340 }}/>
+
+            {/* Coords display */}
+            {mapCenter && (
+              <div style={{ padding:'10px 16px', background:'var(--bg-elevated)', borderTop:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                  <span style={{ fontFamily:'var(--font-mono)', color:'var(--accent)' }}>
+                    {mapCenter.lat.toFixed(5)}, {mapCenter.lng.toFixed(5)}
+                  </span>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={confirmMap} disabled={geocoding} style={{ minWidth:140 }}>
+                  {geocoding
+                    ? <><div className="loader-sm" style={{ borderTopColor:'#fff', width:11, height:11, borderWidth:2 }}/> Filling address…</>
+                    : <><Check size={12}/> Confirm Location</>
+                  }
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 /* ─── Bill Card ───────────────────────────────────────────────────────────── */
 function BillCard({ billing: b, offerApplied }) {
@@ -284,7 +655,7 @@ const SIZE_COLOR = {
 };
 
 /* ─── Item Card (collapsible) ────────────────────────────────────────────── */
-function ItemCard({ item, idx, expanded, onToggle, onChange, onDelete, canDelete, uploadingImg, onUpload, onRemoveImage }) {
+function ItemCard({ item, idx, expanded, onToggle, onChange, onDelete, canDelete, uploadingImg, onUpload, onRemoveImage, catalogSizes, catalogTypes, catalogCategories }) {
   const hasName   = !!item.name.trim();
   const sizeColor = SIZE_COLOR[item.size] || 'var(--accent)';
 
@@ -389,27 +760,38 @@ function ItemCard({ item, idx, expanded, onToggle, onChange, onDelete, canDelete
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {[
                 { key:'quantity', label:'Quantity', type:'number', min:1 },
-                { key:'size',     label:'Size',     type:'select', opts:ITEM_SIZES, hint: SIZE_WEIGHT },
-                { key:'type',     label:'Type',     type:'select', opts:ITEM_TYPES },
-                { key:'category', label:'Category', type:'select', opts:ITEM_CATEGORIES },
-              ].map(({ key, label, type, opts, min, hint }) => (
+                { key:'size',     label:'Size',     type:'select', opts: catalogSizes },
+                { key:'type',     label:'Type',     type:'select', opts: catalogTypes },
+                { key:'category', label:'Category', type:'select', opts: catalogCategories },
+              ].map(({ key, label, type, opts, min }) => (
                 <div key={key} className="form-group">
                   <label className="form-label">{label}</label>
                   {type === 'select'
                     ? <select className="input" value={item[key]} onChange={e => onChange({ ...item, [key]: e.target.value })}>
-                        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                        {opts.map(o => {
+                          const val  = typeof o === 'string' ? o : o.key;
+                          const name = typeof o === 'string' ? o : o.name;
+                          return <option key={val} value={val}>{name}</option>;
+                        })}
                       </select>
                     : <input className="input" type={type} min={min} value={item[key]} onChange={e => onChange({ ...item, [key]: +e.target.value })}/>
                   }
-                  {hint && hint[item[key]] && (
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                      {hint[item[key]]}
-                    </div>
-                  )}
+                  {/* Show size details (weight range + dimensions) for size field */}
+                  {key === 'size' && (() => {
+                    const sizeObj = catalogSizes.find(s => (typeof s === 'string' ? s : s.key) === item.size);
+                    if (!sizeObj || typeof sizeObj === 'string') return null;
+                    const dim = sizeObj.dimensions;
+                    return (
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4, fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
+                        {sizeObj.weightMin} - {sizeObj.weightMax} kg
+                        {dim ? ` · ${dim.width}W * ${dim.length}L * ${dim.height}H cm` : ''}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
-
+            
             {/* Item Images */}
             <div className="form-group">
               <label className="form-label" style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -465,6 +847,12 @@ export default function PlaceOrderPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  /* ── ITEM CATALOG (loaded dynamically from admin config) ── */
+  const [catalogSizes,      setCatalogSizes]      = useState(FALLBACK_ITEM_SIZES);
+  const [catalogTypes,      setCatalogTypes]      = useState(FALLBACK_ITEM_TYPES.map(k => ({ key: k, name: k })));
+  const [catalogCategories, setCatalogCategories] = useState(FALLBACK_ITEM_CATEGORIES.map(k => ({ key: k, name: k })));
+  const [catalogLoading,    setCatalogLoading]    = useState(true);
+
   const [step, setStep] = useState(0);
 
   /* ── DRAFT SELECTION SCREEN (shown before step 0 if drafts exist) ── */
@@ -506,7 +894,7 @@ export default function PlaceOrderPage() {
   const [checkingAvail, setCheckingAvail] = useState(false);
 
   /* ── STEP 4 — ITEMS ── */
-  const [items,          setItems]          = useState([{ name:'', quantity:1, type:'DOCUMENT', category:'OTHER', size:'SMALL', images:[] }]);
+  const [items,          setItems]          = useState([{ name:'', quantity:1, type:'', category:'', size:'', images:[] }]);
   const [expandedItem,   setExpandedItem]   = useState(0);   // which item card is open
   const [uploadingImg,   setUploadingImg]   = useState({});
   const [preparingDraft, setPreparingDraft] = useState(false);
@@ -531,6 +919,53 @@ export default function PlaceOrderPage() {
   const [payLoading,  setPayLoading]  = useState(false);
   const [error,       setError]       = useState('');
   const [placedOrder, setPlacedOrder] = useState(null);
+
+  /* ─── Load item catalog from admin config ─── */
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [sizesRes, typesRes, catsRes] = await Promise.all([
+          itemCatalogAPI.getSizes(),
+          itemCatalogAPI.getTypes(),
+          itemCatalogAPI.getCategories(),
+        ]);
+        if (!mounted) return;
+
+        const sizes = sizesRes.data.data;
+        const types = typesRes.data.data;
+        const cats  = catsRes.data.data;
+
+        if (sizes?.length)  setCatalogSizes(sizes);
+        if (types?.length)  setCatalogTypes(types);
+        if (cats?.length)   setCatalogCategories(cats);
+
+        // Set item defaults based on FIRST active catalog entry — not hardcoded values
+        const defaultSize     = sizes?.[0]?.key  || sizes?.[0]  || '';
+        const defaultType     = types?.[0]?.key  || types?.[0]  || '';
+        const defaultCategory = cats?.[0]?.key   || cats?.[0]   || '';
+
+        setItems(prev => prev.map(item =>
+          item.size === '' && item.type === '' && item.category === ''
+            ? { ...item, size: defaultSize, type: defaultType, category: defaultCategory }
+            : item
+        ));
+      } catch {
+        // Silently keep fallbacks — use first fallback entry as default
+        const defaultSize     = FALLBACK_ITEM_SIZES[0]?.key      || 'SMALL';
+        const defaultType     = FALLBACK_ITEM_TYPES[0]            || 'FRAGILE';
+        const defaultCategory = FALLBACK_ITEM_CATEGORIES[0]       || 'DOCUMENT';
+        setItems(prev => prev.map(item =>
+          item.size === '' && item.type === '' && item.category === ''
+            ? { ...item, size: defaultSize, type: defaultType, category: defaultCategory }
+            : item
+        ));
+      } finally {
+        if (mounted) setCatalogLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   /* ─── Init ─── */
   useEffect(() => {
@@ -657,7 +1092,10 @@ export default function PlaceOrderPage() {
 
   const addItem = () => {
     const newIdx = items.length;
-    setItems([...items, { name:'', quantity:1, type:'DOCUMENT', category:'OTHER', size:'SMALL', images:[] }]);
+    const defaultSize     = (catalogSizes[0]     && (typeof catalogSizes[0]     === 'string' ? catalogSizes[0]     : catalogSizes[0].key))     || 'SMALL';
+    const defaultType     = (catalogTypes[0]     && (typeof catalogTypes[0]     === 'string' ? catalogTypes[0]     : catalogTypes[0].key))     || 'DOCUMENT';
+    const defaultCategory = (catalogCategories[0] && (typeof catalogCategories[0] === 'string' ? catalogCategories[0] : catalogCategories[0].key)) || 'OTHER';
+    setItems([...items, { name:'', quantity:1, type: defaultType, category: defaultCategory, size: defaultSize, images:[] }]);
     setExpandedItem(newIdx); // open the new one, collapse all others
   };
 
@@ -845,12 +1283,16 @@ export default function PlaceOrderPage() {
 
     // Pre-fill items
     if (draft.items?.length) {
+      // Use first catalog entry as fallback (not hardcoded static values)
+      const defSize = (catalogSizes[0] && (typeof catalogSizes[0] === 'string' ? catalogSizes[0] : catalogSizes[0].key)) || '';
+      const defType = (catalogTypes[0] && (typeof catalogTypes[0] === 'string' ? catalogTypes[0] : catalogTypes[0].key)) || '';
+      const defCat  = (catalogCategories[0] && (typeof catalogCategories[0] === 'string' ? catalogCategories[0] : catalogCategories[0].key)) || '';
       setItems(draft.items.map(i => ({
         name:     i.name     || '',
         quantity: i.quantity || 1,
-        type:     i.type     || 'DOCUMENT',
-        category: i.category || 'OTHER',
-        size:     i.size     || 'SMALL',
+        type:     i.type     || defType,
+        category: i.category || defCat,
+        size:     i.size     || defSize,
         images:   i.images   || [],
       })));
     }
@@ -1356,6 +1798,9 @@ export default function PlaceOrderPage() {
                 uploadingImg={!!uploadingImg[idx]}
                 onUpload={e => handleImageUpload(idx, e)}
                 onRemoveImage={imgIdx => updateItem(idx, { ...item, images: item.images.filter((_, i) => i !== imgIdx) })}
+                catalogSizes={catalogSizes}
+                catalogTypes={catalogTypes}
+                catalogCategories={catalogCategories}
               />
             ))}
 
@@ -1371,8 +1816,16 @@ export default function PlaceOrderPage() {
             <div style={{ display:'flex', gap:10, marginTop:12, background:'var(--accent-dim)', border:'1px solid var(--accent-ring)', borderRadius:'var(--radius-sm)', padding:'11px 13px' }}>
               <Info size={14} style={{ color:'var(--accent)', flexShrink:0, marginTop:1 }}/>
               <div className="body-xs" style={{ lineHeight:1.7 }}>
-                Item size is based on <strong>weight</strong>: Mini (0–2 kg), Small (2–15 kg), Medium (15–30 kg), Large (30–60 kg), Extra Large (60–120 kg).
-                The exact bill is calculated when you tap Continue.
+                <strong>Item size is based on weight & dimensions:</strong>{' '}
+                {catalogSizes.length > 0
+                  ? catalogSizes.map((s, i) => {
+                      const name = typeof s === 'string' ? s : s.name;
+                      const detail = typeof s !== 'string' ? ` (${s.weightMin}–${s.weightMax} kg)` : '';
+                      return <span key={i}>{i > 0 ? ', ' : ''}{name}{detail}</span>;
+                    })
+                  : `Select the size that best matches your item's weight.`
+                }
+                {'. '}The exact bill is calculated when you tap Continue.
               </div>
             </div>
           </>
@@ -1397,18 +1850,26 @@ export default function PlaceOrderPage() {
             }
             {/* Items Breakdown */}
             {(() => {
-              // Group items by size and count quantities
-              const sizeOrder = ['MINI', 'SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE'];
-              const sizeLabel = { MINI:'Mini', SMALL:'Small', MEDIUM:'Medium', LARGE:'Large', EXTRA_LARGE:'Extra Large' };
-              const sizeWeight = { MINI:'0–2 kg', SMALL:'2–15 kg', MEDIUM:'15–30 kg', LARGE:'30–60 kg', EXTRA_LARGE:'60–120 kg' };
+              // Build lookup from catalog
+              const sizeMap = {};
+              catalogSizes.forEach((s, i) => {
+                const key = typeof s === 'string' ? s : s.key;
+                sizeMap[key] = {
+                  name:   typeof s === 'string' ? s : s.name,
+                  weight: typeof s === 'string' ? '' : `${s.weightMin}–${s.weightMax} kg`,
+                  dim:    (typeof s !== 'string' && s.dimensions) ? `${s.dimensions.width}W×${s.dimensions.length}L×${s.dimensions.height}H cm` : null,
+                  order:  i,
+                  color:  ['#64748b','#0ea5e9','#8b5cf6','#f59e0b','#ef4444'][i % 5],
+                };
+              });
               const grouped = items.reduce((acc, item) => {
-                const s = item.size || 'SMALL';
+                const s = item.size || (catalogSizes[0] ? (typeof catalogSizes[0] === 'string' ? catalogSizes[0] : catalogSizes[0].key) : 'SMALL');
                 if (!acc[s]) acc[s] = { count: 0, names: [] };
                 acc[s].count += (item.quantity || 1);
                 if (item.name.trim()) acc[s].names.push(item.name.trim());
                 return acc;
               }, {});
-              const rows = sizeOrder.filter(s => grouped[s]);
+              const rows = Object.keys(grouped).sort((a, b) => ((sizeMap[a]?.order ?? 99) - (sizeMap[b]?.order ?? 99)));
               return (
                 <div className="card">
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
@@ -1417,20 +1878,19 @@ export default function PlaceOrderPage() {
                   </div>
                   {rows.map((size, idx) => {
                     const g = grouped[size];
-                    const colors = { MINI:'#64748b', SMALL:'#0ea5e9', MEDIUM:'#8b5cf6', LARGE:'#f59e0b', EXTRA_LARGE:'#ef4444' };
-                    const c = colors[size];
+                    const meta = sizeMap[size] || { name: size, weight: '', dim: null, color: '#0ea5e9' };
+                    const c = meta.color;
+                    const abbr = meta.name.length <= 2 ? meta.name.toUpperCase() : meta.name.substring(0, 2).toUpperCase();
                     return (
                       <div key={size} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: idx < rows.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                        {/* Size badge */}
                         <div style={{ width:36, height:36, borderRadius:9, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background: c + '15' }}>
-                          <span style={{ fontSize:11, fontWeight:800, color:c, fontFamily:'var(--font-mono)' }}>
-                            {size === 'EXTRA_LARGE' ? 'XL' : size[0]}
-                          </span>
+                          <span style={{ fontSize:11, fontWeight:800, color:c, fontFamily:'var(--font-mono)' }}>{abbr}</span>
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                            <span style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)' }}>{sizeLabel[size]}</span>
-                            <span style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:4, background: c + '18', color:c, fontFamily:'var(--font-mono)', letterSpacing:'0.04em' }}>{sizeWeight[size]}</span>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2, flexWrap:'wrap' }}>
+                            <span style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)' }}>{meta.name}</span>
+                            {meta.weight && <span style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:4, background: c + '18', color:c, fontFamily:'var(--font-mono)', letterSpacing:'0.04em' }}>{meta.weight}</span>}
+                            {meta.dim && <span style={{ fontSize:9, color:'var(--text-tertiary)', fontFamily:'var(--font-mono)' }}>{meta.dim}</span>}
                           </div>
                           {g.names.length > 0 && (
                             <div className="body-xs" style={{ color:'var(--text-tertiary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
@@ -1438,7 +1898,6 @@ export default function PlaceOrderPage() {
                             </div>
                           )}
                         </div>
-                        {/* Quantity pill */}
                         <div style={{ flexShrink:0, minWidth:28, height:28, borderRadius:8, background:'var(--bg-overlay)', display:'flex', alignItems:'center', justifyContent:'center', padding:'0 8px' }}>
                           <span style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)', fontFamily:'var(--font-mono)' }}>×{g.count}</span>
                         </div>

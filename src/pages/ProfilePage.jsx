@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   LogOut, ChevronRight, Bell, HelpCircle, Shield,
   MapPin, AlertCircle, Sun, Moon, Languages,
-  Edit2, Check, X, Loader,
+  Edit2, Check, X, Loader, User, Phone, Mail,
 } from 'lucide-react';
 import { useAuth }          from '../context/AuthContext';
 import { useNavigate }      from 'react-router-dom';
@@ -11,35 +11,6 @@ import { useTheme }         from '../context/Themecontext';
 import { useLang }          from '../context/Langcontext';
 import { profileAPI }       from '../services/api';
 import toast                from 'react-hot-toast';
-
-function Field({ label, value, onChange, type = 'text', placeholder, readOnly = false }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, fontWeight: 600 }}>
-        {label}
-      </div>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange?.(e.target.value)}
-        placeholder={placeholder || label}
-        readOnly={readOnly}
-        style={{
-          width: '100%',
-          padding: '10px 12px',
-          borderRadius: 10,
-          border: '1px solid var(--border)',
-          background: readOnly ? 'var(--bg-surface)' : 'var(--bg-base)',
-          color: readOnly ? 'var(--text-secondary)' : 'var(--text-primary)',
-          fontSize: 14,
-          outline: 'none',
-          boxSizing: 'border-box',
-          opacity: readOnly ? 0.7 : 1,
-        }}
-      />
-    </div>
-  );
-}
 
 export default function ProfilePage() {
   const { user, setUser, logout } = useAuth();
@@ -59,265 +30,248 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
+    if (!user?.uid) return;
     setLoading(true);
-    profileAPI.getMe()
-      .then(({ data }) => {
-        const u = data.data;
-        setForm({
-          firstName:      u.firstName                  || '',
-          lastName:       u.lastName                   || '',
-          email:          u.email                      || '',
-          buildingOrFlat: u.address?.buildingOrFlat    || '',
-          area:           u.address?.area              || '',
-          street:         u.address?.street            || '',
-          city:           u.address?.city              || '',
-          state:          u.address?.state             || '',
-          postalCode:     u.address?.postalCode        || '',
-          country:        u.address?.country           || '',
-        });
-        const merged = { ...user, ...u };
-        setUser(merged);
-        localStorage.setItem('user', JSON.stringify(merged));
-      })
-      .catch(() => {
-        setForm({
-          firstName:      user?.firstName              || '',
-          lastName:       user?.lastName               || '',
-          email:          user?.email                  || '',
-          buildingOrFlat: user?.address?.buildingOrFlat || '',
-          area:           user?.address?.area           || '',
-          street:         user?.address?.street         || '',
-          city:           user?.address?.city           || '',
-          state:          user?.address?.state          || '',
-          postalCode:     user?.address?.postalCode     || '',
-          country:        user?.address?.country        || '',
-        });
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    profileAPI.getMe().then(({ data }) => {
+      const u = data.data || data;
+      setForm({
+        firstName:     u.firstName     || '',
+        lastName:      u.lastName      || '',
+        email:         u.email         || '',
+        buildingOrFlat:u.address?.buildingOrFlat || '',
+        area:          u.address?.area           || '',
+        street:        u.address?.street         || '',
+        city:          u.address?.city           || '',
+        state:         u.address?.state          || '',
+        postalCode:    u.address?.postalCode      || '',
+        country:       u.address?.country        || 'India',
+      });
+    }).catch(() => {
+      setForm(f => ({ ...f, firstName: user.firstName || '', lastName: user.lastName || '', email: user.email || '' }));
+    }).finally(() => setLoading(false));
+  }, [user?.uid]);
 
-  const set = key => val => setForm(f => ({ ...f, [key]: val }));
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { data } = await profileAPI.updateMe({
-        firstName: form.firstName,
-        lastName:  form.lastName,
-        email:     form.email || undefined,
+      const payload = {
+        firstName: form.firstName.trim(),
+        lastName:  form.lastName.trim(),
+        email:     form.email.trim() || undefined,
         address: {
-          buildingOrFlat: form.buildingOrFlat,
-          area:           form.area,
-          street:         form.street,
-          city:           form.city,
-          state:          form.state,
-          postalCode:     form.postalCode,
-          country:        form.country || 'India',
+          buildingOrFlat: form.buildingOrFlat.trim(),
+          area:           form.area.trim(),
+          street:         form.street.trim(),
+          city:           form.city.trim(),
+          state:          form.state.trim(),
+          postalCode:     form.postalCode.trim(),
+          country:        form.country.trim() || 'India',
         },
-      });
-      const merged = { ...user, ...data.data };
-      setUser(merged);
-      localStorage.setItem('user', JSON.stringify(merged));
+      };
+      const { data } = await profileAPI.updateMe(payload);
+      if (setUser) {
+        const updated = { ...user, ...data.data };
+        setUser(updated);
+        // Persist to localStorage so name shows correctly after page refresh
+        localStorage.setItem('user', JSON.stringify(updated));
+      }
       toast.success('Profile updated!');
       setEditing(false);
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to update profile');
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to save');
+    } finally { setSaving(false); }
   };
 
-  const handleCancel = () => {
-    setForm({
-      firstName:      user?.firstName               || '',
-      lastName:       user?.lastName                || '',
-      email:          user?.email                   || '',
-      buildingOrFlat: user?.address?.buildingOrFlat || '',
-      area:           user?.address?.area           || '',
-      street:         user?.address?.street         || '',
-      city:           user?.address?.city           || '',
-      state:          user?.address?.state          || '',
-      postalCode:     user?.address?.postalCode     || '',
-      country:        user?.address?.country        || '',
-    });
-    setEditing(false);
-  };
-
-  const firstName = user?.firstName || '';
-  const lastName  = user?.lastName  || '';
-  const fullName  = [firstName, lastName].filter(Boolean).join(' ') || 'User';
-  const initial   = (firstName[0] || user?.phoneNumber?.[3] || 'U').toUpperCase();
+  const initials = ((form.firstName?.[0] || '') + (form.lastName?.[0] || '')).toUpperCase() || user?.phoneNumber?.slice(-2) || '?';
 
   const menuItems = [
-    { icon: Bell,        label: t('notifications'),  action: openDrawer,                  color: 'var(--blue)'   },
-    { icon: MapPin,      label: t('savedAddresses'), action: () => navigate('/addresses'), color: 'var(--green)'  },
-    { icon: AlertCircle, label: t('myDisputes'),     action: () => navigate('/disputes'),  color: 'var(--orange)' },
-    { icon: HelpCircle,  label: t('helpSupport'),    action: () => {},                    color: 'var(--accent)' },
-    { icon: Shield,      label: t('privacyPolicy'),  action: () => {},                    color: 'var(--purple)' },
+    { icon: MapPin,       label: 'Saved Addresses',     sub: 'Manage delivery locations', onClick: () => navigate('/addresses'), color: 'var(--accent)' },
+    { icon: AlertCircle,  label: t('disputes'),          sub: 'View and raise disputes',   onClick: () => navigate('/disputes'),  color: 'var(--orange)' },
+    { icon: HelpCircle,   label: 'Feedback',             sub: 'Share your experience',     onClick: () => navigate('/feedback'),  color: 'var(--blue)'  },
+    { icon: Bell,         label: t('notifications'),     sub: 'View recent notifications', onClick: openDrawer,                   color: 'var(--purple)' },
+    { icon: Shield,       label: 'Privacy & Security',   sub: 'Account settings',          onClick: () => {},                     color: 'var(--text-secondary)' },
   ];
+
+  if (loading) return (
+    <div style={{ display:'flex', justifyContent:'center', alignItems:'center', minHeight:300 }}>
+      <div className="spinner" />
+    </div>
+  );
 
   return (
     <div>
-      {/* Profile Header */}
-      <div style={{
-        padding: 'var(--sp-24) var(--sp-16)',
-        background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 'var(--sp-16)',
-      }}>
-        <div className="avatar avatar-lg">
-          {loading ? <Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> : initial}
+      {/* ── Profile header ── */}
+      <div style={{ padding:'var(--sp-20) var(--sp-16) var(--sp-16)', background:'var(--bg-surface)', borderBottom:'1px solid var(--border)' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', gap:16, marginBottom: editing ? 20 : 0 }}>
+          {/* Avatar */}
+          <div style={{
+            width:64, height:64, borderRadius:'50%',
+            background:'linear-gradient(135deg, var(--accent), var(--accent-2))',
+            display:'grid', placeItems:'center',
+            fontSize:24, fontWeight:800, color:'#fff',
+            flexShrink:0,
+            boxShadow:'0 0 20px var(--accent-glow)',
+          }}>
+            {initials}
+          </div>
+
+          <div style={{ flex:1, minWidth:0 }}>
+            {!editing ? (
+              <>
+                <div style={{ fontWeight:800, fontSize:20, color:'var(--text-primary)', letterSpacing:'-0.03em', marginBottom:3 }}>
+                  {form.firstName || form.lastName ? `${form.firstName} ${form.lastName}`.trim() : 'Your Name'}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:5, color:'var(--text-tertiary)', fontSize:12, marginBottom:6 }}>
+                  <Phone size={11} />
+                  <span style={{ fontFamily:'var(--font-mono)' }}>{user?.phoneNumber || '—'}</span>
+                </div>
+                {form.email && (
+                  <div style={{ display:'flex', alignItems:'center', gap:5, color:'var(--text-tertiary)', fontSize:12 }}>
+                    <Mail size={11} />
+                    <span className="truncate">{form.email}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ display:'flex', gap:8 }}>
+                <input className="input" placeholder="First name" value={form.firstName} onChange={e => upd('firstName', e.target.value)} style={{ height:38, fontSize:13 }} />
+                <input className="input" placeholder="Last name"  value={form.lastName}  onChange={e => upd('lastName',  e.target.value)} style={{ height:38, fontSize:13 }} />
+              </div>
+            )}
+          </div>
+
+          {/* Edit/Save/Cancel buttons */}
+          {!editing ? (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setEditing(true)}
+              style={{ flexShrink:0 }}
+            >
+              <Edit2 size={12} /> Edit
+            </button>
+          ) : (
+            <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)} disabled={saving}>
+                <X size={12} />
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader size={12} style={{ animation:'spin 0.7s linear infinite' }} /> : <Check size={12} />}
+              </button>
+            </div>
+          )}
         </div>
-        <div style={{ flex: 1 }}>
-          <div className="title-sm" style={{ marginBottom: 2 }}>{fullName}</div>
-          <div className="mono body-xs">{user?.phoneNumber}</div>
-          {user?.email && <div className="body-xs" style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{user.email}</div>}
-        </div>
-        {!editing ? (
-          <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Edit2 size={13} /> Edit
-          </button>
-        ) : (
-          <button className="btn btn-ghost btn-sm" onClick={handleCancel}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <X size={13} /> Cancel
-          </button>
+
+        {/* Edit form */}
+        {editing && (
+          <div style={{ marginTop:16, animation:'slideUp 0.2s ease' }}>
+            <div className="form-group" style={{ marginBottom:12 }}>
+              <label className="form-label">Email (optional)</label>
+              <input className="input" type="email" placeholder="your@email.com" value={form.email} onChange={e => upd('email', e.target.value)} />
+            </div>
+            <div style={{ marginBottom:8, fontSize:11, fontWeight:600, color:'var(--text-tertiary)', letterSpacing:'0.06em', textTransform:'uppercase' }}>Address</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {[
+                { k:'buildingOrFlat', label:'Building/Flat', span: false },
+                { k:'area',           label:'Area',          span: false },
+                { k:'street',         label:'Street',        span: true  },
+                { k:'city',           label:'City',          span: false },
+                { k:'state',          label:'State',         span: false },
+                { k:'postalCode',     label:'Pincode',       span: false },
+              ].map(({ k, label, span }) => (
+                <input
+                  key={k}
+                  className="input"
+                  placeholder={label}
+                  value={form[k]}
+                  onChange={e => upd(k, e.target.value)}
+                  style={{ height:38, fontSize:13, gridColumn: span ? '1 / -1' : undefined }}
+                />
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
-      <div style={{ padding: 'var(--sp-16)' }}>
+      {/* ── Settings ── */}
+      <div style={{ padding:'var(--sp-16)' }}>
 
-        {editing ? (
-          /* ── EDIT MODE ─────────────────────────────────────── */
-          <div>
-            <div className="label-sm" style={{ marginBottom: 'var(--sp-8)' }}>Personal Info</div>
-            <div className="card" style={{ marginBottom: 'var(--sp-16)' }}>
-              <Field label="First Name" value={form.firstName} onChange={set('firstName')} />
-              <Field label="Last Name"  value={form.lastName}  onChange={set('lastName')}  />
-              <Field label="Email" type="email" value={form.email} onChange={set('email')} placeholder="your@email.com" />
-              <Field label="Phone" value={user?.phoneNumber || ''} readOnly />
-            </div>
-
-            <div className="label-sm" style={{ marginBottom: 'var(--sp-8)' }}>Address</div>
-            <div className="card" style={{ marginBottom: 'var(--sp-16)' }}>
-              <Field label="Flat / Building" value={form.buildingOrFlat} onChange={set('buildingOrFlat')} placeholder="e.g. Flat 4B, Tower A" />
-              <Field label="Area / Colony"   value={form.area}           onChange={set('area')}           placeholder="e.g. Andheri West" />
-              <Field label="Street"          value={form.street}         onChange={set('street')}         placeholder="e.g. MG Road" />
-              <Field label="City"            value={form.city}           onChange={set('city')}           placeholder="e.g. Mumbai" />
-              <Field label="State"           value={form.state}          onChange={set('state')}          placeholder="e.g. Maharashtra" />
-              <Field label="Postal Code"     value={form.postalCode}     onChange={set('postalCode')}     placeholder="e.g. 400058" />
-              <Field label="Country"         value={form.country}        onChange={set('country')}        placeholder="India" />
-            </div>
-
-            <button
-              className="btn btn-primary btn-full btn-lg"
-              onClick={handleSave}
-              disabled={saving}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-            >
-              {saving
-                ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</>
-                : <><Check size={16} /> Save Changes</>}
-            </button>
-          </div>
-
-        ) : (
-          /* ── VIEW MODE ─────────────────────────────────────── */
-          <>
-            <div style={{ marginBottom: 'var(--sp-4)' }}>
-              <div className="label-sm" style={{ marginBottom: 'var(--sp-8)' }}>{t('accountInfo')}</div>
-              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                {[
-                  { label: t('phone'),  val: user?.phoneNumber || '—' },
-                  { label: t('name'),   val: fullName },
-                  { label: t('email'),  val: user?.email || '—' },
-                  { label: 'Address',   val: [form.buildingOrFlat, form.area, form.city].filter(Boolean).join(', ') || '—' },
-                  { label: t('userId'), val: (user?.uid || '').slice(-8).toUpperCase(), mono: true },
-                ].map(({ label, val, mono }, i, arr) => (
-                  <div key={label} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: 'var(--sp-12) var(--sp-16)',
-                    borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
-                  }}>
-                    <span className="body-xs">{label}</span>
-                    <span style={{
-                      fontSize: 13, fontWeight: 500, maxWidth: '60%', textAlign: 'right',
-                      fontFamily: mono ? 'var(--font-mono)' : 'inherit',
-                      color: 'var(--text-primary)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>{val}</span>
-                  </div>
-                ))}
+        {/* Theme + Language row */}
+        <div className="card" style={{ marginBottom:'var(--sp-12)' }}>
+          {/* Theme toggle */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:14, borderBottom:'1px solid var(--border)', marginBottom:14 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:34, height:34, borderRadius:'var(--radius-sm)', background:'var(--bg-elevated)', border:'1px solid var(--border)', display:'grid', placeItems:'center' }}>
+                {isDark ? <Moon size={15} style={{ color:'var(--blue)' }} /> : <Sun size={15} style={{ color:'var(--yellow)' }} />}
+              </div>
+              <div>
+                <div style={{ fontWeight:600, fontSize:13, color:'var(--text-primary)' }}>{t('theme') || 'Theme'}</div>
+                <div style={{ fontSize:11, color:'var(--text-tertiary)' }}>{isDark ? 'Dark mode' : 'Light mode'}</div>
               </div>
             </div>
-
-            {/* Settings */}
-            <div style={{ marginTop: 'var(--sp-20)', marginBottom: 'var(--sp-4)' }}>
-              <div className="label-sm" style={{ marginBottom: 'var(--sp-8)' }}>{t('settings')}</div>
-              <div className="card">
-                <div style={{ marginBottom: 'var(--sp-16)' }}>
-                  <div className="row gap-8" style={{ marginBottom: 'var(--sp-10)' }}>
-                    {isDark ? <Moon size={14} style={{ color: 'var(--accent)' }} /> : <Sun size={14} style={{ color: 'var(--orange)' }} />}
-                    <span className="body-sm font-semibold">{t('appearance')}</span>
-                  </div>
-                  <div className="seg-control">
-                    <button className={`seg-option ${theme === 'dark'  ? 'active' : ''}`} onClick={() => setTheme('dark')}>
-                      <Moon size={12} /> {t('darkMode')}
-                    </button>
-                    <button className={`seg-option ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>
-                      <Sun size={12} /> {t('lightMode')}
-                    </button>
-                  </div>
-                </div>
-                <div className="divider" style={{ margin: '0 0 var(--sp-16)' }} />
-                <div>
-                  <div className="row gap-8" style={{ marginBottom: 'var(--sp-10)' }}>
-                    <Languages size={14} style={{ color: 'var(--accent)' }} />
-                    <span className="body-sm font-semibold">{t('language')}</span>
-                  </div>
-                  <div className="seg-control">
-                    <button className={`seg-option seg-option-accent ${lang === 'en' ? 'active' : ''}`} onClick={() => changeLang('en')}>
-                      🇬🇧 English
-                    </button>
-                    <button className={`seg-option seg-option-accent ${lang === 'hi' ? 'active' : ''}`} onClick={() => changeLang('hi')}>
-                      🇮🇳 हिन्दी
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Menu */}
-            <div style={{ marginTop: 'var(--sp-20)', marginBottom: 'var(--sp-4)' }}>
-              <div className="label-sm" style={{ marginBottom: 'var(--sp-8)' }}>More</div>
-              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                {menuItems.map(({ icon: Icon, label, action, color }) => (
-                  <button key={label} onClick={action} className="list-item"
-                    style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                    <div className="list-icon" style={{ background: `${color}18` }}>
-                      <Icon size={15} style={{ color }} />
-                    </div>
-                    <div className="list-body"><div className="list-title">{label}</div></div>
-                    <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Sign Out */}
-            <div style={{ marginTop: 'var(--sp-20)' }}>
-              <button className="btn btn-danger btn-full btn-lg"
-                onClick={async () => { await logout(); navigate('/login'); }}>
-                <LogOut size={16} /> {t('signOut')}
+            <div className="seg-control">
+              <button className={`seg-option${isDark ? '' : ' active'}`} onClick={() => setTheme('light')}>
+                <Sun size={11} /> Light
+              </button>
+              <button className={`seg-option${isDark ? ' active' : ''}`} onClick={() => setTheme('dark')}>
+                <Moon size={11} /> Dark
               </button>
             </div>
+          </div>
 
-            <div className="mono" style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 10, marginTop: 'var(--sp-24)' }}>
-              {t('version')}
+          {/* Language toggle */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:34, height:34, borderRadius:'var(--radius-sm)', background:'var(--bg-elevated)', border:'1px solid var(--border)', display:'grid', placeItems:'center' }}>
+                <Languages size={15} style={{ color:'var(--accent)' }} />
+              </div>
+              <div>
+                <div style={{ fontWeight:600, fontSize:13, color:'var(--text-primary)' }}>{t('language') || 'Language'}</div>
+                <div style={{ fontSize:11, color:'var(--text-tertiary)' }}>{lang === 'hi' ? 'हिन्दी' : 'English'}</div>
+              </div>
             </div>
-          </>
-        )}
+            <div className="seg-control">
+              <button className={`seg-option${lang === 'en' ? ' active' : ''}`} onClick={() => changeLang('en')}>EN</button>
+              <button className={`seg-option${lang === 'hi' ? ' active' : ''}`} onClick={() => changeLang('hi')}>हि</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Menu items */}
+        <div className="card" style={{ marginBottom:'var(--sp-12)', padding:0, overflow:'hidden' }}>
+          {menuItems.map(({ icon: Icon, label, sub, onClick, color }, i) => (
+            <div
+              key={label}
+              className="list-item"
+              style={{ borderBottom: i < menuItems.length - 1 ? '1px solid var(--border)' : 'none' }}
+              onClick={onClick}
+            >
+              <div style={{ width:36, height:36, borderRadius:'var(--radius-sm)', background:'var(--bg-elevated)', border:'1px solid var(--border)', display:'grid', placeItems:'center', flexShrink:0 }}>
+                <Icon size={15} style={{ color }} />
+              </div>
+              <div className="list-body">
+                <div className="list-title">{label}</div>
+                <div className="list-subtitle">{sub}</div>
+              </div>
+              <ChevronRight size={15} style={{ color:'var(--text-tertiary)' }} />
+            </div>
+          ))}
+        </div>
+
+        {/* Logout */}
+        <button
+          className="btn btn-danger btn-lg"
+          onClick={() => { logout(); navigate('/login'); }}
+        >
+          <LogOut size={15} /> {t('logout') || 'Sign Out'}
+        </button>
+
+        <div style={{ textAlign:'center', marginTop:20, fontSize:11, color:'var(--text-tertiary)', fontFamily:'var(--font-mono)', letterSpacing:'0.04em' }}>
+          BHADA v1.0 · User App
+        </div>
+
+        <div style={{ height:8 }} />
       </div>
     </div>
   );
