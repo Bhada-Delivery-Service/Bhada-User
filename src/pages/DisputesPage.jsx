@@ -3,11 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, RefreshCw, ChevronRight, AlertTriangle, X, Check, MessageCircle } from 'lucide-react';
 import { disputesAPI, ordersAPI } from '../services/api';
 
-// ─── Must match server DisputeReason enum exactly ─────────────────────────────
 const REASONS = [
   'ITEM_DAMAGED',
-  'ITEM_LOST',          // was ITEM_MISSING — doesn't exist in server enum
-  'WRONG_DELIVERY',     // was WRONG_ITEM_DELIVERED — doesn't exist in server enum
+  'ITEM_LOST',
+  'WRONG_DELIVERY',
   'LATE_DELIVERY',
   'RIDER_BEHAVIOUR',
   'PAYMENT_ISSUE',
@@ -49,7 +48,6 @@ export default function DisputesPage() {
 
   return (
     <div>
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: 'var(--sp-16)', background: 'var(--bg-surface)',
@@ -131,6 +129,8 @@ export function RaiseDisputePage() {
   const [description, setDescription] = useState('');
   const [submitting,  setSubmitting]  = useState(false);
   const [error,       setError]       = useState('');
+  // FIX: Track which field caused the error so it clears precisely
+  const [errorField,  setErrorField]  = useState(''); // 'orderId' | 'description' | 'api'
 
   useEffect(() => {
     ordersAPI.getMyOrders()
@@ -138,17 +138,43 @@ export function RaiseDisputePage() {
       .catch(() => {});
   }, []);
 
+  // FIX: Clear orderId error as soon as user selects an order
+  const handleOrderChange = (e) => {
+    setOrderId(e.target.value);
+    if (errorField === 'orderId') { setError(''); setErrorField(''); }
+  };
+
+  // FIX: Clear description error once user has typed enough
+  const handleDescriptionChange = (e) => {
+    setDescription(e.target.value);
+    if (errorField === 'description' && e.target.value.trim().length >= 10) {
+      setError(''); setErrorField('');
+    }
+  };
+
   const submit = async () => {
-    if (!orderId) { setError('Please select an order'); return; }
-    if (description.trim().length < 10) { setError('Please describe the issue in at least 10 characters'); return; }
-    setSubmitting(true); setError('');
+    if (!orderId) {
+      setError('Please select an order');
+      setErrorField('orderId');
+      return;
+    }
+    if (description.trim().length < 10) {
+      setError('Please describe the issue in at least 10 characters');
+      setErrorField('description');
+      return;
+    }
+    setSubmitting(true); setError(''); setErrorField('');
     try {
       await disputesAPI.raise({ orderId, reason, description: description.trim() });
       navigate('/disputes', { replace: true });
     } catch (e) {
       setError(e.response?.data?.message || e.message || 'Failed to raise dispute');
+      setErrorField('api');
     } finally { setSubmitting(false); }
   };
+
+  const descLen = description.trim().length;
+  const descOk  = descLen >= 10;
 
   return (
     <div>
@@ -163,13 +189,15 @@ export function RaiseDisputePage() {
       </div>
 
       <div style={{ padding: 'var(--sp-16)' }}>
-        {/* Order */}
+
+        {/* Order selector */}
         <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
           <div className="label-sm" style={{ marginBottom: 'var(--sp-10)' }}>Select Order</div>
           <select
             className="input"
             value={orderId}
-            onChange={e => setOrderId(e.target.value)}
+            onChange={handleOrderChange}
+            style={errorField === 'orderId' ? { borderColor: 'var(--red)' } : {}}
           >
             <option value="">— Choose an order —</option>
             {orders.map(o => (
@@ -178,9 +206,14 @@ export function RaiseDisputePage() {
               </option>
             ))}
           </select>
+          {errorField === 'orderId' && (
+            <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={11} /> {error}
+            </div>
+          )}
         </div>
 
-        {/* Reason */}
+        {/* Reason chips */}
         <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
           <div className="label-sm" style={{ marginBottom: 'var(--sp-10)' }}>Issue Type</div>
           <div className="reason-grid">
@@ -199,22 +232,41 @@ export function RaiseDisputePage() {
 
         {/* Description */}
         <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
-          <div className="label-sm" style={{ marginBottom: 'var(--sp-10)' }}>
-            Description
-            <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6 }}>
-              ({description.trim().length}/10 min)
+          <div className="label-sm" style={{ marginBottom: 'var(--sp-10)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Description</span>
+            {/* Live counter — orange until 10 chars, then green */}
+            <span style={{
+              fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)',
+              color: descOk ? 'var(--green)' : descLen > 0 ? 'var(--orange)' : 'var(--text-tertiary)',
+              transition: 'color 0.2s',
+            }}>
+              {descLen}/10 min {descOk ? '✓' : ''}
             </span>
           </div>
           <textarea
             className="input input-textarea"
             placeholder="Describe what happened in detail…"
             value={description}
-            onChange={e => setDescription(e.target.value)}
+            onChange={handleDescriptionChange}
             rows={4}
+            style={errorField === 'description' ? { borderColor: 'var(--red)' } : {}}
           />
+          {errorField === 'description' && (
+            <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={11} /> {error}
+            </div>
+          )}
         </div>
 
-        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--sp-12)' }}>⚠ {error}</div>}
+        {/* API-level error only (dismissible) */}
+        {errorField === 'api' && error && (
+          <div className="alert alert-error" style={{ marginBottom: 'var(--sp-12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>⚠ {error}</span>
+            <button onClick={() => { setError(''); setErrorField(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 2 }}>
+              <X size={13} />
+            </button>
+          </div>
+        )}
 
         <button className="btn btn-primary btn-full btn-lg" onClick={submit} disabled={submitting}>
           {submitting
@@ -258,7 +310,6 @@ export function DisputeDetailPage() {
         <div className="center-box"><div className="body-sm text-muted">Dispute not found</div></div>
       ) : (
         <div style={{ padding: 'var(--sp-16)' }}>
-          {/* Status */}
           <div className="card" style={{ marginBottom: 'var(--sp-12)', textAlign: 'center', padding: 'var(--sp-20)' }}>
             <span className={`badge ${s.cls}`} style={{ fontSize: 13, padding: '6px 16px' }}>
               <span className="badge-dot" />
@@ -274,7 +325,6 @@ export function DisputeDetailPage() {
             </div>
           </div>
 
-          {/* Details */}
           <div className="card" style={{ marginBottom: 'var(--sp-12)' }}>
             {[
               { label: 'Order ID',   val: `#${(dispute.orderId   || '').slice(-8).toUpperCase()}`, mono: true },
@@ -293,7 +343,6 @@ export function DisputeDetailPage() {
             )}
           </div>
 
-          {/* Resolution */}
           {dispute.resolution && (
             <div className="card alert-success" style={{ marginBottom: 'var(--sp-12)' }}>
               <div className="label-sm" style={{ marginBottom: 6, color: 'var(--green)' }}>Resolution</div>
@@ -301,7 +350,6 @@ export function DisputeDetailPage() {
             </div>
           )}
 
-          {/* Admin note */}
           {dispute.adminNote && (
             <div className="card" style={{ marginBottom: 'var(--sp-12)', background: 'var(--blue-dim, rgba(59,130,246,0.08))' }}>
               <div className="label-sm" style={{ marginBottom: 6, color: 'var(--blue, #3b82f6)' }}>Response from Support</div>
@@ -309,7 +357,6 @@ export function DisputeDetailPage() {
             </div>
           )}
 
-          {/* Chat CTA */}
           {!['RESOLVED', 'REJECTED', 'CLOSED'].includes(dispute.status) && (
             <button
               className="btn btn-primary btn-full"
