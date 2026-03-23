@@ -11,24 +11,24 @@ import { ordersAPI, paymentsAPI, addressesAPI, offersAPI, filesAPI, profileAPI, 
 import { useAuth } from '../context/AuthContext';
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
-const FALLBACK_ITEM_TYPES      = ['FRAGILE', 'NON_FRAGILE', 'PERISHABLE', 'NON_PERISHABLE', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'DOCUMENT', 'FOOD', 'OTHER'];
+const FALLBACK_ITEM_TYPES = ['FRAGILE', 'NON_FRAGILE', 'PERISHABLE', 'NON_PERISHABLE', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'DOCUMENT', 'FOOD', 'OTHER'];
 const FALLBACK_ITEM_CATEGORIES = ['DOCUMENT', 'FOOD', 'GROCERY', 'ELECTRONICS', 'CLOTHING', 'MEDICAL', 'PERISHABLE', 'OTHER'];
-const FALLBACK_ITEM_SIZES      = [
-  { key: 'MINI',        name: 'Mini',        weightMin: 0,  weightMax: 2,   dimensions: null },
-  { key: 'SMALL',       name: 'Small',       weightMin: 2,  weightMax: 15,  dimensions: null },
-  { key: 'MEDIUM',      name: 'Medium',      weightMin: 15, weightMax: 30,  dimensions: null },
-  { key: 'LARGE',       name: 'Large',       weightMin: 30, weightMax: 60,  dimensions: null },
+const FALLBACK_ITEM_SIZES = [
+  { key: 'MINI', name: 'Mini', weightMin: 0, weightMax: 2, dimensions: null },
+  { key: 'SMALL', name: 'Small', weightMin: 2, weightMax: 15, dimensions: null },
+  { key: 'MEDIUM', name: 'Medium', weightMin: 15, weightMax: 30, dimensions: null },
+  { key: 'LARGE', name: 'Large', weightMin: 30, weightMax: 60, dimensions: null },
   { key: 'EXTRA_LARGE', name: 'Extra Large', weightMin: 60, weightMax: 120, dimensions: null },
 ];
 
 const STEPS = [
-  { label: 'Sender',   icon: '🙋' },
+  { label: 'Sender', icon: '🙋' },
   { label: 'Receiver', icon: '👤' },
-  { label: 'Pickup',   icon: '📍' },
-  { label: 'Drop',     icon: '🏁' },
-  { label: 'Items',    icon: '📦' },
-  { label: 'Payment',  icon: '💳' },
-  { label: 'Confirm',  icon: '✅' },
+  { label: 'Pickup', icon: '📍' },
+  { label: 'Drop', icon: '🏁' },
+  { label: 'Items', icon: '📦' },
+  { label: 'Payment', icon: '💳' },
+  { label: 'Confirm', icon: '✅' },
 ];
 
 const EMPTY_ADDR = {
@@ -78,8 +78,8 @@ const MapModal = memo(function MapModal({
   // Don't render until we have a real height
   if (!vpHeight) return null;
 
-  const sheetH  = Math.min(Math.floor(vpHeight * 0.90), 620);
-  const mapH    = Math.max(sheetH - MODAL_HEADER_H - MODAL_SEARCH_H - MODAL_FOOTER_H, 160);
+  const sheetH = Math.min(Math.floor(vpHeight * 0.90), 620);
+  const mapH = Math.max(sheetH - MODAL_HEADER_H - MODAL_SEARCH_H - MODAL_FOOTER_H, 160);
 
   return ReactDOM.createPortal(
     <div
@@ -232,8 +232,8 @@ const SIZE_COLOR = {
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function normalizePhone(raw) {
   const d = (raw || '').replace(/\D/g, '');
-  if (d.length === 10)                       return '+91' + d;
-  if (d.length === 11 && d.startsWith('0'))  return '+91' + d.slice(1);
+  if (d.length === 10) return '+91' + d;
+  if (d.length === 11 && d.startsWith('0')) return '+91' + d.slice(1);
   if (d.length === 12 && d.startsWith('91')) return '+' + d;
   return null;
 }
@@ -272,7 +272,7 @@ function extractApiError(e) {
   if (!data) return e.message || 'Something went wrong';
   if (typeof data === 'string') return data;
   if (data.message) return data.message;
-  if (data.error)   return data.error;
+  if (data.error) return data.error;
   if (Array.isArray(data.errors)) return data.errors.map(x => x.msg || `${x.path}: ${x.msg}`).join(' · ');
   return 'Request failed';
 }
@@ -294,7 +294,7 @@ const StepBar = memo(function StepBar({ step, itemCount }) {
       overflowX: 'auto', gap: 0, scrollbarWidth: 'none',
     }}>
       {STEPS.map((s, i) => {
-        const done   = i < step;
+        const done = i < step;
         const active = i === step;
         return (
           <React.Fragment key={s.label}>
@@ -419,19 +419,19 @@ const AddrTile = memo(function AddrTile({ label, addr, dotColor, onEdit }) {
         {isEmpty
           ? <div className="body-sm" style={{ color: 'var(--text-tertiary)' }}>Tap to set…</div>
           : <>
-              {addr.contactPerson && <div className="body-sm font-semibold">{addr.contactPerson}</div>}
-              <div className="body-xs" style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{summary}</div>
-              {addr.contactNumber && (
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
-                  {addr.contactNumber}
-                </div>
-              )}
-              {(!addr.latitude || !addr.longitude) && (
-                <div style={{ fontSize: 10, color: 'var(--orange)', marginTop: 4, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <AlertCircle size={10} /> Coordinates missing — edit to add lat/lng
-                </div>
-              )}
-            </>
+            {addr.contactPerson && <div className="body-sm font-semibold">{addr.contactPerson}</div>}
+            <div className="body-xs" style={{ marginTop: 2, color: 'var(--text-secondary)' }}>{summary}</div>
+            {addr.contactNumber && (
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+                {addr.contactNumber}
+              </div>
+            )}
+            {(!addr.latitude || !addr.longitude) && (
+              <div style={{ fontSize: 10, color: 'var(--orange)', marginTop: 4, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <AlertCircle size={10} /> Coordinates missing — edit to add lat/lng
+              </div>
+            )}
+          </>
         }
       </div>
       <div style={{ padding: '4px 6px', borderRadius: 6, background: 'var(--bg-overlay)', flexShrink: 0 }}>
@@ -496,22 +496,22 @@ const AddressSheet = memo(function AddressSheet({ title, savedAddresses, onPick,
 /* ─── Address Form ────────────────────────────────────────────────────────── */
 // FIX: Memoized + stable onChange reference to prevent re-render cascade
 const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPickSaved, onSavePrompt }) {
-  const [gpsLoading,      setGpsLoading]      = useState(false);
-  const [gpsError,        setGpsError]        = useState('');
-  const [showMap,         setShowMap]         = useState(false);
-  const [mapCenter,       setMapCenter]       = useState(null);
-  const [searchQuery,     setSearchQuery]     = useState('');
-  const [suggestions,     setSuggestions]     = useState([]);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState('');
+  const [showMap, setShowMap] = useState(false);
+  const [mapCenter, setMapCenter] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [searchLoading,   setSearchLoading]   = useState(false);
-  const [geocoding,       setGeocoding]       = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
 
-  const mapRef          = useRef(null);
-  const markerRef       = useRef(null);
-  const mapObjRef       = useRef(null);
-  const searchDebounce  = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const mapObjRef = useRef(null);
+  const searchDebounce = useRef(null);
   const sessionTokenRef = useRef(null);
-  const onChangeRef     = useRef(onChange);
+  const onChangeRef = useRef(onChange);
 
   // FIX: Keep onChange ref up to date to avoid stale closures
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
@@ -519,14 +519,14 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
   const GMAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
   const FULL = [
-    { key: 'area',           label: 'Area / Locality', ph: 'Andheri West' },
+    { key: 'area', label: 'Area / Locality', ph: 'Andheri West' },
     { key: 'buildingOrFlat', label: 'Building / Flat', ph: 'A-204, Sunrise Apt' },
-    { key: 'street',         label: 'Street *',        ph: 'Link Road' },
+    { key: 'street', label: 'Street *', ph: 'Link Road' },
   ];
   const HALF = [
-    { key: 'city',          label: 'City *',         ph: 'Mumbai' },
-    { key: 'state',         label: 'State',          ph: 'Maharashtra' },
-    { key: 'postalCode',    label: 'PIN Code',       ph: '400053' },
+    { key: 'city', label: 'City *', ph: 'Mumbai' },
+    { key: 'state', label: 'State', ph: 'Maharashtra' },
+    { key: 'postalCode', label: 'PIN Code', ph: '400053' },
     { key: 'contactPerson', label: 'Contact Person', ph: 'John Doe' },
     { key: 'contactNumber', label: 'Contact Number', ph: '+91XXXXXXXXXX' },
   ];
@@ -559,19 +559,19 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
           r.types.includes('street_address') || r.types.includes('route') || r.types.includes('premise')
         ) || results[0];
         const comps = best.address_components;
-        const streetNum   = getComp(comps, 'street_number');
-        const route       = getComp(comps, 'route');
+        const streetNum = getComp(comps, 'street_number');
+        const route = getComp(comps, 'route');
         const sublocality = getComp(comps, 'sublocality_level_1', 'sublocality', 'neighborhood');
-        const locality    = getComp(comps, 'locality');
-        const adminL2     = getComp(comps, 'administrative_area_level_2');
-        const adminL1     = getComp(comps, 'administrative_area_level_1');
-        const postal      = getComp(comps, 'postal_code');
+        const locality = getComp(comps, 'locality');
+        const adminL2 = getComp(comps, 'administrative_area_level_2');
+        const adminL1 = getComp(comps, 'administrative_area_level_1');
+        const postal = getComp(comps, 'postal_code');
         filled = {
           ...filled,
-          street:     [streetNum, route].filter(Boolean).join(' '),
-          area:       sublocality,
-          city:       locality || adminL2,
-          state:      adminL1,
+          street: [streetNum, route].filter(Boolean).join(' '),
+          area: sublocality,
+          city: locality || adminL2,
+          state: adminL1,
           postalCode: postal,
         };
       }
@@ -599,8 +599,8 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
         (err) => {
           setGpsError(
             err.code === 1 ? 'Location permission denied. Please allow in browser settings.' :
-            err.code === 2 ? 'Location unavailable. Try again.' :
-            'GPS timed out. Try again.'
+              err.code === 2 ? 'Location unavailable. Try again.' :
+                'GPS timed out. Try again.'
           );
           setGpsLoading(false);
         },
@@ -635,7 +635,7 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
         (err) => {
           setGpsError(
             err.code === 1 ? 'Location permission denied.' :
-            err.code === 2 ? 'Location unavailable.' : 'GPS timed out.'
+              err.code === 2 ? 'Location unavailable.' : 'GPS timed out.'
           );
           setGpsLoading(false);
         },
@@ -657,46 +657,46 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
     // MapModal renders via portal — give React one tick to mount the DOM node
     const timer = setTimeout(() => {
       if (!mapRef.current) return;
-      const initLat = addr.latitude  || 19.0760;
+      const initLat = addr.latitude || 19.0760;
       const initLng = addr.longitude || 72.8777;
 
-    function initMap(maps) {
-      const center = { lat: initLat, lng: initLng };
-      const map = new maps.Map(mapRef.current, {
-        center, zoom: 16, disableDefaultUI: true, zoomControl: true,
-        styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
-      });
-      mapObjRef.current = map;
-      const marker = new maps.Marker({
-        position: center, map, draggable: true,
-        icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor: 'var(--accent,#1EC674)', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-      });
-      markerRef.current = marker;
-      marker.addListener('dragend', () => {
-        const pos = marker.getPosition();
-        setMapCenter({ lat: pos.lat(), lng: pos.lng() });
-      });
-      map.addListener('click', (e) => {
-        marker.setPosition(e.latLng);
-        setMapCenter({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-      });
-      // CRITICAL: trigger resize so Maps renders correctly inside our fixed-height container
-      // Without this, the map tiles render grey or misaligned
-      setTimeout(() => {
-        maps.event.trigger(map, 'resize');
-        map.setCenter(center);
-      }, 100);
-    }
+      function initMap(maps) {
+        const center = { lat: initLat, lng: initLng };
+        const map = new maps.Map(mapRef.current, {
+          center, zoom: 16, disableDefaultUI: true, zoomControl: true,
+          styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+        });
+        mapObjRef.current = map;
+        const marker = new maps.Marker({
+          position: center, map, draggable: true,
+          icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor: 'var(--accent,#1EC674)', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+        });
+        markerRef.current = marker;
+        marker.addListener('dragend', () => {
+          const pos = marker.getPosition();
+          setMapCenter({ lat: pos.lat(), lng: pos.lng() });
+        });
+        map.addListener('click', (e) => {
+          marker.setPosition(e.latLng);
+          setMapCenter({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+        });
+        // CRITICAL: trigger resize so Maps renders correctly inside our fixed-height container
+        // Without this, the map tiles render grey or misaligned
+        setTimeout(() => {
+          maps.event.trigger(map, 'resize');
+          map.setCenter(center);
+        }, 100);
+      }
 
-    if (window.google?.maps?.places) { initMap(window.google.maps); return; }
-    const existing = document.getElementById('gmap-script');
-    if (existing) { existing.onload = () => initMap(window.google.maps); return; }
-    const s = document.createElement('script');
-    s.id = 'gmap-script';
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAP_KEY}&libraries=places`;
-    s.async = true;
-    s.onload = () => initMap(window.google.maps);
-    document.head.appendChild(s);
+      if (window.google?.maps?.places) { initMap(window.google.maps); return; }
+      const existing = document.getElementById('gmap-script');
+      if (existing) { existing.onload = () => initMap(window.google.maps); return; }
+      const s = document.createElement('script');
+      s.id = 'gmap-script';
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAP_KEY}&libraries=places`;
+      s.async = true;
+      s.onload = () => initMap(window.google.maps);
+      document.head.appendChild(s);
     }, 50); // wait for MapModal portal to mount
     return () => clearTimeout(timer);
   }, [showMap]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -722,19 +722,19 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
             r.types.includes('street_address') || r.types.includes('route') || r.types.includes('premise')
           ) || results[0];
           const comps = best.address_components;
-          const streetNum   = getComp(comps, 'street_number');
-          const route       = getComp(comps, 'route');
+          const streetNum = getComp(comps, 'street_number');
+          const route = getComp(comps, 'route');
           const sublocality = getComp(comps, 'sublocality_level_1', 'sublocality', 'neighborhood');
-          const locality    = getComp(comps, 'locality');
-          const adminL2     = getComp(comps, 'administrative_area_level_2');
-          const adminL1     = getComp(comps, 'administrative_area_level_1');
-          const postal      = getComp(comps, 'postal_code');
+          const locality = getComp(comps, 'locality');
+          const adminL2 = getComp(comps, 'administrative_area_level_2');
+          const adminL1 = getComp(comps, 'administrative_area_level_1');
+          const postal = getComp(comps, 'postal_code');
           filled = {
             ...filled,
-            street:     [streetNum, route].filter(Boolean).join(' '),
-            area:       sublocality,
-            city:       locality || adminL2,
-            state:      adminL1,
+            street: [streetNum, route].filter(Boolean).join(' '),
+            area: sublocality,
+            city: locality || adminL2,
+            state: adminL1,
             postalCode: postal,
           };
         }
@@ -940,10 +940,10 @@ const AddrForm = memo(function AddrForm({ addr, onChange, savedAddresses, onPick
 const BillCard = memo(function BillCard({ billing: b, offerApplied }) {
   if (!b) return null;
   const rows = [
-    { label: 'Delivery',    val: `₹${Number(b.deliveryCharges).toFixed(2)}`,    note: `${Number(b.totalDistance || 0).toFixed(1)} km` },
+    { label: 'Delivery', val: `₹${Number(b.deliveryCharges).toFixed(2)}`, note: `${Number(b.totalDistance || 0).toFixed(1)} km` },
     { label: 'Platform Fee', val: `₹${Number(b.platformFee || 0).toFixed(2)}` },
-    { label: 'Handling',    val: `₹${Number(b.handlingCharges || 0).toFixed(2)}` },
-    { label: 'Subtotal',    val: `₹${Number(b.subtotalAmount).toFixed(2)}` },
+    { label: 'Handling', val: `₹${Number(b.handlingCharges || 0).toFixed(2)}` },
+    { label: 'Subtotal', val: `₹${Number(b.subtotalAmount).toFixed(2)}` },
     { label: `GST ${Number(b.gstPercentage || 0)}%`, val: `₹${Number(b.gstCharges || 0).toFixed(2)}` },
     ...(b.discountAmount > 0 ? [{
       label: offerApplied ? offerApplied.code : 'Discount',
@@ -986,7 +986,7 @@ const ItemCard = memo(function ItemCard({
   uploadingImg, onUpload, onRemoveImage,
   catalogSizes, catalogTypes, catalogCategories,
 }) {
-  const hasName  = !!item.name.trim();
+  const hasName = !!item.name.trim();
   const sizeColor = SIZE_COLOR[item.size] || 'var(--accent)';
 
   const sizeObj = useMemo(
@@ -1076,8 +1076,8 @@ const ItemCard = memo(function ItemCard({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {[
                 { key: 'quantity', label: 'Quantity', type: 'number', min: 1 },
-                { key: 'size',     label: 'Size',     type: 'select', opts: catalogSizes },
-                { key: 'type',     label: 'Type',     type: 'select', opts: catalogTypes },
+                { key: 'size', label: 'Size', type: 'select', opts: catalogSizes },
+                { key: 'type', label: 'Type', type: 'select', opts: catalogTypes },
                 { key: 'category', label: 'Category', type: 'select', opts: catalogCategories },
               ].map(({ key, label, type, opts, min }) => (
                 <div key={key} className="form-group">
@@ -1090,19 +1090,18 @@ const ItemCard = memo(function ItemCard({
                         ))}
                       </select>
                     )
-                   : <input
-    className="input"
-    type={type}
-    min={min}
-    value={item[key] === 0 ? '' : item[key]}
-    onChange={e => onChange({ ...item, [key]: e.target.value === '' ? '' : +e.target.value })}
-    onFocus={e => e.target.select()}
-    onBlur={e => {
-      const v = +e.target.value;
-      onChange({ ...item, [key]: (!v || v < 1) ? 1 : v });
-    }}
-  />
-                  }
+                    : <input
+                      className="input"
+                      type={type}
+                      min={min}
+                      value={item[key] === 0 ? '' : item[key]}
+                      onChange={e => onChange({ ...item, [key]: e.target.value === '' ? '' : +e.target.value })}
+                      onFocus={e => e.target.select()}
+                      onBlur={e => {
+                        const v = +e.target.value;
+                        onChange({ ...item, [key]: (!v || v < 1) ? 1 : v });
+                      }}
+                    />}
                   {key === 'size' && sizeObj && typeof sizeObj !== 'string' && (
                     <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4, fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
                       {sizeObj.weightMin} – {sizeObj.weightMax} kg
@@ -1158,78 +1157,78 @@ const ItemCard = memo(function ItemCard({
 ════════════════════════════════════════════════════════════════════════════ */
 export default function PlaceOrderPage() {
   const { user } = useAuth();
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
 
   /* ── Catalog ── */
-  const [catalogSizes,      setCatalogSizes]      = useState(FALLBACK_ITEM_SIZES);
-  const [catalogTypes,      setCatalogTypes]      = useState(FALLBACK_ITEM_TYPES.map(k => ({ key: k, name: k })));
+  const [catalogSizes, setCatalogSizes] = useState(FALLBACK_ITEM_SIZES);
+  const [catalogTypes, setCatalogTypes] = useState(FALLBACK_ITEM_TYPES.map(k => ({ key: k, name: k })));
   const [catalogCategories, setCatalogCategories] = useState(FALLBACK_ITEM_CATEGORIES.map(k => ({ key: k, name: k })));
-  const [catalogLoading,    setCatalogLoading]    = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(true);
 
   const [step, setStep] = useState(0);
 
   /* ── Drafts ── */
   const [showDraftScreen, setShowDraftScreen] = useState(false);
-  const [draftOrders,     setDraftOrders]     = useState([]);
-  const [draftsLoading,   setDraftsLoading]   = useState(true);
+  const [draftOrders, setDraftOrders] = useState([]);
+  const [draftsLoading, setDraftsLoading] = useState(true);
   const [deletingDraftId, setDeletingDraftId] = useState(null);
 
   /* ── Step 0 – Sender ── */
   const [senderFirstName, setSenderFirstName] = useState('');
-  const [senderLastName,  setSenderLastName]  = useState('');
-  const [senderPhone,     setSenderPhone]     = useState('');
-  const [senderLoading,   setSenderLoading]   = useState(true);
+  const [senderLastName, setSenderLastName] = useState('');
+  const [senderPhone, setSenderPhone] = useState('');
+  const [senderLoading, setSenderLoading] = useState(true);
 
   /* ── Step 1 – Receiver ── */
-  const [rawPhone,      setRawPhone]      = useState('');
-  const [firstName,     setFirstName]     = useState('');
-  const [lastName,      setLastName]      = useState('');
-  const [lookingUp,     setLookingUp]     = useState(false);
-  const [lookupDone,    setLookupDone]    = useState(false);
+  const [rawPhone, setRawPhone] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [lookingUp, setLookingUp] = useState(false);
+  const [lookupDone, setLookupDone] = useState(false);
   const [receiverFound, setReceiverFound] = useState(false);
-  const [lookupError,   setLookupError]   = useState('');
+  const [lookupError, setLookupError] = useState('');
 
   /* ── Step 2 – Pickup ── */
-  const [pickup,          setPickup]          = useState({ ...EMPTY_ADDR });
-  const [pickupSource,    setPickupSource]    = useState('');
-  const [editingPickup,   setEditingPickup]   = useState(false);
+  const [pickup, setPickup] = useState({ ...EMPTY_ADDR });
+  const [pickupSource, setPickupSource] = useState('');
+  const [editingPickup, setEditingPickup] = useState(false);
   const [showPickupSheet, setShowPickupSheet] = useState(false);
 
   /* ── Step 3 – Drop ── */
-  const [drop,          setDrop]          = useState({ ...EMPTY_ADDR });
-  const [dropSource,    setDropSource]    = useState('');
-  const [editingDrop,   setEditingDrop]   = useState(false);
+  const [drop, setDrop] = useState({ ...EMPTY_ADDR });
+  const [dropSource, setDropSource] = useState('');
+  const [editingDrop, setEditingDrop] = useState(false);
   const [showDropSheet, setShowDropSheet] = useState(false);
 
-  const [myAddrs,      setMyAddrs]      = useState([]);
+  const [myAddrs, setMyAddrs] = useState([]);
   const [availability, setAvailability] = useState(null);
   const [checkingAvail, setCheckingAvail] = useState(false);
 
   /* ── Step 4 – Items ── */
-  const [items,        setItems]        = useState([]);  // initialized after catalog loads
+  const [items, setItems] = useState([]);  // initialized after catalog loads
   const [expandedItem, setExpandedItem] = useState(0);
   const [uploadingImg, setUploadingImg] = useState({});
   const [preparingDraft, setPreparingDraft] = useState(false);
 
   /* ── Step 5 – Payment ── */
-  const [draftOrder,    setDraftOrder]    = useState(null);
+  const [draftOrder, setDraftOrder] = useState(null);
   const [itemsSnapshot, setItemsSnapshot] = useState(null);
-  const [billing,       setBilling]       = useState(null);
+  const [billing, setBilling] = useState(null);
   const [isSelfHandling, setIsSelfHandling] = useState(false);
-  const [offerCode,     setOfferCode]     = useState('');
-  const [offerApplied,  setOfferApplied]  = useState(null);
-  const [offerError,    setOfferError]    = useState('');
+  const [offerCode, setOfferCode] = useState('');
+  const [offerApplied, setOfferApplied] = useState(null);
+  const [offerError, setOfferError] = useState('');
   const [applyingOffer, setApplyingOffer] = useState(false);
   const [removingOffer, setRemovingOffer] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
-  const [activeOffers,  setActiveOffers]  = useState([]);
-  const [showOffers,    setShowOffers]    = useState(false);
-  const [payMode,       setPayMode]       = useState('RAZORPAY');
-  const [codBlocked,    setCodBlocked]    = useState(false);
+  const [activeOffers, setActiveOffers] = useState([]);
+  const [showOffers, setShowOffers] = useState(false);
+  const [payMode, setPayMode] = useState('RAZORPAY');
+  const [codBlocked, setCodBlocked] = useState(false);
 
-  const [loading,     setLoading]     = useState(false);
-  const [payLoading,  setPayLoading]  = useState(false);
-  const [error,       setError]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
+  const [error, setError] = useState('');
   const [placedOrder, setPlacedOrder] = useState(null);
 
   // FIX: Use a ref to track if catalog is loaded before initializing item defaults
@@ -1248,23 +1247,23 @@ export default function PlaceOrderPage() {
         if (!mounted) return;
         const sizes = sizesRes.data.data;
         const types = typesRes.data.data;
-        const cats  = catsRes.data.data;
+        const cats = catsRes.data.data;
         if (sizes?.length) setCatalogSizes(sizes);
         if (types?.length) setCatalogTypes(types);
-        if (cats?.length)  setCatalogCategories(cats);
+        if (cats?.length) setCatalogCategories(cats);
         const defSize = getCatalogKey(sizes?.[0]) || 'SMALL';
         const defType = getCatalogKey(types?.[0]) || 'FRAGILE';
-        const defCat  = getCatalogKey(cats?.[0])  || 'DOCUMENT';
+        const defCat = getCatalogKey(cats?.[0]) || 'DOCUMENT';
         catalogReadyRef.current = true;
         // FIX: Initialize items AFTER catalog is loaded to avoid wrong defaults
         setItems(prev =>
           prev.length === 0
             ? [{ name: '', quantity: 1, type: defType, category: defCat, size: defSize, images: [] }]
             : prev.map(item =>
-                item.size === '' && item.type === '' && item.category === ''
-                  ? { ...item, size: defSize, type: defType, category: defCat }
-                  : item
-              )
+              item.size === '' && item.type === '' && item.category === ''
+                ? { ...item, size: defSize, type: defType, category: defCat }
+                : item
+            )
         );
       } catch {
         catalogReadyRef.current = true;
@@ -1284,19 +1283,19 @@ export default function PlaceOrderPage() {
   useEffect(() => {
     if (user) {
       setSenderFirstName(user.firstName || '');
-      setSenderLastName(user.lastName   || '');
-      setSenderPhone(user.phoneNumber   || '');
+      setSenderLastName(user.lastName || '');
+      setSenderPhone(user.phoneNumber || '');
     }
 
     profileAPI.getMe()
       .then(({ data }) => {
         const u = data.data || data;
         setSenderFirstName(u.firstName || '');
-        setSenderLastName(u.lastName   || '');
-        setSenderPhone(u.phoneNumber   || '');
+        setSenderLastName(u.lastName || '');
+        setSenderPhone(u.phoneNumber || '');
         if (u.codBlocked) { setCodBlocked(true); setPayMode('RAZORPAY'); }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setSenderLoading(false));
 
     addressesAPI.getAll().then(({ data }) => {
@@ -1304,7 +1303,7 @@ export default function PlaceOrderPage() {
       setMyAddrs(addrs);
       const pref = addrs.find(a => a.isPreferredPickup);
       if (pref) { setPickup(addrFromSaved(pref)); setPickupSource('preferred'); }
-    }).catch(() => {});
+    }).catch(() => { });
 
     if (!window.Razorpay) {
       const s = document.createElement('script');
@@ -1318,7 +1317,7 @@ export default function PlaceOrderPage() {
         setDraftOrders(drafts);
         if (drafts.length > 0) setShowDraftScreen(true);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setDraftsLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1334,7 +1333,7 @@ export default function PlaceOrderPage() {
       if (info.found) {
         setReceiverFound(true);
         if (!firstName.trim() && info.firstName) setFirstName(info.firstName);
-        if (!lastName.trim()  && info.lastName)  setLastName(info.lastName);
+        if (!lastName.trim() && info.lastName) setLastName(info.lastName);
         if (info.preferredDropAddress) {
           const a = addrFromPersisted(info.preferredDropAddress);
           if (!a.contactPerson) a.contactPerson = info.firstName || '';
@@ -1356,11 +1355,11 @@ export default function PlaceOrderPage() {
   /* ─── buildPayload — stable with useCallback ─── */
   // FIX: Memoized so it doesn't cause downstream useEffect re-runs
   const buildPayload = useCallback(() => ({
-    receiverPhone:     normalizePhone(rawPhone) || rawPhone,
+    receiverPhone: normalizePhone(rawPhone) || rawPhone,
     receiverFirstName: firstName.trim(),
-    receiverLastName:  lastName.trim(),
-    pickup:  sanitizeAddr(pickup),
-    drop:    sanitizeAddr(drop),
+    receiverLastName: lastName.trim(),
+    pickup: sanitizeAddr(pickup),
+    drop: sanitizeAddr(drop),
     items,
     paymentMode: payMode === 'RAZORPAY' ? 'UPI' : payMode,
     isSelfHandling,
@@ -1406,7 +1405,7 @@ export default function PlaceOrderPage() {
     const amount = billing?.payableAmount || 0;
     offersAPI.getAll(amount)
       .then(({ data }) => setActiveOffers(data.data || []))
-      .catch(() => {});
+      .catch(() => { });
   }, [step, billing?.payableAmount]);
 
   /* ─── Availability check ─── */
@@ -1416,7 +1415,7 @@ export default function PlaceOrderPage() {
     try {
       const { data } = await ordersAPI.checkAvailability({
         pickupLat: pickup.latitude, pickupLng: pickup.longitude,
-        dropLat:   drop.latitude,   dropLng:   drop.longitude,
+        dropLat: drop.latitude, dropLng: drop.longitude,
       });
       setAvailability(data.data || data);
     } catch {
@@ -1436,21 +1435,23 @@ export default function PlaceOrderPage() {
   /* ─── Item helpers — stable with useCallback ─── */
   const updateItem = useCallback((idx, updated) => {
     setItems(prev => { const n = [...prev]; n[idx] = updated; return n; });
+    // Jab bhi koi item update ho, error clear karo
+    setError('');
   }, []);
 
   const deleteItem = useCallback((idx) => {
     setItems(prev => prev.filter((_, i) => i !== idx));
     setExpandedItem(prev => {
       if (prev === idx) return Math.max(0, idx - 1);
-      if (prev > idx)   return prev - 1;
+      if (prev > idx) return prev - 1;
       return prev;
     });
   }, []);
 
   const addItem = useCallback(() => {
-    const defSize = getCatalogKey(catalogSizes[0])      || 'SMALL';
-    const defType = getCatalogKey(catalogTypes[0])      || 'DOCUMENT';
-    const defCat  = getCatalogKey(catalogCategories[0]) || 'OTHER';
+    const defSize = getCatalogKey(catalogSizes[0]) || 'SMALL';
+    const defType = getCatalogKey(catalogTypes[0]) || 'DOCUMENT';
+    const defCat = getCatalogKey(catalogCategories[0]) || 'OTHER';
     setItems(prev => {
       const newIdx = prev.length;
       setExpandedItem(newIdx);
@@ -1511,7 +1512,7 @@ export default function PlaceOrderPage() {
       const updated = data.data || data;
       setDraftOrder(updated); setBilling(updated.billing);
       setOfferApplied(null); setOfferCode(''); setOfferError('');
-    } catch (_) {}
+    } catch (_) { }
     finally { setRemovingOffer(false); }
   }, [draftOrder, buildPayload]);
 
@@ -1529,9 +1530,9 @@ export default function PlaceOrderPage() {
           const { data: od } = await ordersAPI.applyOffer(updated.orderId, offerApplied.code);
           const withOffer = od.data || od;
           setDraftOrder(withOffer); setBilling(withOffer.billing);
-        } catch (_) {}
+        } catch (_) { }
       }
-    } catch (_) {}
+    } catch (_) { }
     finally { setRecalculating(false); }
   }, [draftOrder, buildPayload, offerApplied]);
 
@@ -1557,7 +1558,7 @@ export default function PlaceOrderPage() {
       const amount = billing?.payableAmount || 1;
       const { data: pd } = await paymentsAPI.initiate({
         orderId: draftOrder.orderId, amount,
-        customerName:  `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Customer',
+        customerName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Customer',
         customerPhone: user?.phoneNumber || '',
         customerEmail: user?.email || '',
       });
@@ -1574,6 +1575,7 @@ export default function PlaceOrderPage() {
             try {
               await paymentsAPI.verify(payData.paymentId, {
                 razorpayPaymentId: resp.razorpay_payment_id,
+                razorpayOrderId: resp.razorpay_order_id,   // ✅ ADD THIS LINE
                 razorpaySignature: resp.razorpay_signature,
                 orderId: draftOrder.orderId,
               });
@@ -1615,21 +1617,21 @@ export default function PlaceOrderPage() {
     const phone = draft.billing?.customerDetails?.phoneNumber || draft.receiver?.phoneNumber || '';
     setRawPhone(phone.replace(/^\+91/, ''));
     setFirstName(draft.receiver?.firstName || '');
-    setLastName(draft.receiver?.lastName   || '');
+    setLastName(draft.receiver?.lastName || '');
     setLookupDone(true); setReceiverFound(true);
     if (draft.senderNode) { setPickup(addrFromPersisted(draft.senderNode)); setPickupSource('draft'); }
     if (draft.receiverNode) { setDrop(addrFromPersisted(draft.receiverNode)); setDropSource('draft'); }
     if (draft.items?.length) {
-      const defSize = getCatalogKey(catalogSizes[0])      || '';
-      const defType = getCatalogKey(catalogTypes[0])      || '';
-      const defCat  = getCatalogKey(catalogCategories[0]) || '';
+      const defSize = getCatalogKey(catalogSizes[0]) || '';
+      const defType = getCatalogKey(catalogTypes[0]) || '';
+      const defCat = getCatalogKey(catalogCategories[0]) || '';
       setItems(draft.items.map(i => ({
-        name:     i.name     || '',
+        name: i.name || '',
         quantity: i.quantity || 1,
-        type:     i.type     || defType,
+        type: i.type || defType,
         category: i.category || defCat,
-        size:     i.size     || defSize,
-        images:   i.images   || [],
+        size: i.size || defSize,
+        images: i.images || [],
       })));
     }
     setDraftOrder({ orderId: draft.orderId, ...draft });
@@ -1646,16 +1648,16 @@ export default function PlaceOrderPage() {
       if (!senderFirstName.trim()) { setError('Enter your first name'); return; }
     }
     if (step === 1) {
-      if (rawPhone.length !== 10)   { setError('Enter a 10-digit mobile number'); return; }
-      if (!lookupDone)              { setError('Tap "Look up" to check the receiver first'); return; }
-      if (!firstName.trim())        { setError("Enter the receiver's first name"); return; }
+      if (rawPhone.length !== 10) { setError('Enter a 10-digit mobile number'); return; }
+      if (!lookupDone) { setError('Tap "Look up" to check the receiver first'); return; }
+      if (!firstName.trim()) { setError("Enter the receiver's first name"); return; }
     }
     if (step === 2) {
-      if (!pickup.street || !pickup.city)        { setError('Fill in pickup street and city'); return; }
+      if (!pickup.street || !pickup.city) { setError('Fill in pickup street and city'); return; }
       if (!pickup.latitude || !pickup.longitude) { setError('Pickup address is missing coordinates.'); return; }
     }
     if (step === 3) {
-      if (!drop.street || !drop.city)            { setError('Fill in drop street and city'); return; }
+      if (!drop.street || !drop.city) { setError('Fill in drop street and city'); return; }
       if (!pickup.latitude || !pickup.longitude || !drop.latitude || !drop.longitude) {
         setError('Both addresses must have coordinates'); return;
       }
@@ -1671,7 +1673,7 @@ export default function PlaceOrderPage() {
       }
       // Items changed — delete stale draft silently
       if (draftOrder?.orderId) {
-        try { await ordersAPI.deleteDraft(draftOrder.orderId); } catch (_) {}
+        try { await ordersAPI.deleteDraft(draftOrder.orderId); } catch (_) { }
       }
       setBilling(null); setDraftOrder(null); setOfferApplied(null); setOfferCode('');
       hasPreparedRef.current = false;
@@ -1715,7 +1717,7 @@ export default function PlaceOrderPage() {
         ...addr,
         label: type === 'pickup' ? 'My Pickup' : 'My Drop',
         isPreferredPickup: type === 'pickup',
-        isPreferredDrop:   type === 'drop',
+        isPreferredDrop: type === 'drop',
       });
       const { data } = await addressesAPI.getAll();
       setMyAddrs(data.data || []);
@@ -1726,11 +1728,11 @@ export default function PlaceOrderPage() {
 
   /* ─── Derived ─── */
   const pickupReady = !!(pickup.street && pickup.city);
-  const dropReady   = !!(drop.street && drop.city);
-  const isBusy      = loading || payLoading || preparingDraft;
+  const dropReady = !!(drop.street && drop.city);
+  const isBusy = loading || payLoading || preparingDraft;
 
   // Only named items count — empty items are "in progress" and not counted
-  const namedItems     = useMemo(() => items.filter(i => i.name.trim()), [items]);
+  const namedItems = useMemo(() => items.filter(i => i.name.trim()), [items]);
   const totalItemCount = useMemo(() => namedItems.reduce((t, i) => t + (i.quantity || 1), 0), [namedItems]);
 
   const btnLabel = () => {
@@ -1776,12 +1778,12 @@ export default function PlaceOrderPage() {
                 <div className="body-xs">Loading drafts…</div>
               </div>
             ) : draftOrders.map((draft, idx) => {
-              const b          = draft.billing;
-              const dPickup    = draft.senderNode;
-              const dDrop      = draft.receiverNode;
-              const receiver   = draft.receiver;
-              const itemCount  = (draft.items || []).reduce((t, i) => t + (i.quantity || 1), 0);
-              const createdAt  = draft.createdAt
+              const b = draft.billing;
+              const dPickup = draft.senderNode;
+              const dDrop = draft.receiverNode;
+              const receiver = draft.receiver;
+              const itemCount = (draft.items || []).reduce((t, i) => t + (i.quantity || 1), 0);
+              const createdAt = draft.createdAt
                 ? new Date(draft.createdAt?.seconds ? draft.createdAt.seconds * 1000 : draft.createdAt)
                 : null;
               const isDeleting = deletingDraftId === draft.orderId;
@@ -1920,14 +1922,15 @@ export default function PlaceOrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">First Name *</label>
-                  <input className="input" placeholder="Rahul" value={senderFirstName} onChange={e => setSenderFirstName(e.target.value)} />
+                  <input className="input" placeholder="Rahul" value={firstName}
+                    onChange={e => { setFirstName(e.target.value); setError(''); }} />
                   {senderFirstName.trim().length > 0 && senderFirstName.trim().length < 2 && (
                     <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3 }}>Too short</div>
                   )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Last Name</label>
-                  <input className="input" placeholder="Sharma" value={senderLastName} onChange={e => setSenderLastName(e.target.value)} />
+                  <input className="input" placeholder="Sharma" value={senderFirstName} onChange={e => { setSenderFirstName(e.target.value); setError(''); }} />
                 </div>
               </div>
               {senderLoading && (
@@ -1962,6 +1965,7 @@ export default function PlaceOrderPage() {
                       onChange={e => {
                         const v = e.target.value.replace(/\D/g, '').slice(0, 10);
                         setRawPhone(v);
+                        setError('');
                         if (v !== rawPhone) { setLookupDone(false); setReceiverFound(false); setLookupError(''); setDropSource(''); setDrop({ ...EMPTY_ADDR }); }
                       }}
                       onKeyDown={e => { if (e.key === 'Enter' && rawPhone.length === 10) lookupReceiver(); }}
@@ -2007,11 +2011,11 @@ export default function PlaceOrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">First Name *</label>
-                  <input className="input" placeholder="Rahul" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                  <input className="input" placeholder="Rahul" value={firstName} onChange={e => { setFirstName(e.target.value); setError(''); }} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Last Name</label>
-                  <input className="input" placeholder="Sharma" value={lastName} onChange={e => setLastName(e.target.value)} />
+                  <input className="input" placeholder="Sharma" value={firstName} onChange={e => { setFirstName(e.target.value); setError(''); }} />
                 </div>
               </div>
             </div>
@@ -2031,7 +2035,7 @@ export default function PlaceOrderPage() {
                 <div>
                   <div className="label-sm">Pickup Address</div>
                   {pickupSource === 'preferred' && <div style={{ fontSize: 10, color: 'var(--green)', fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={10} /> YOUR PREFERRED PICKUP</div>}
-                  {pickupSource === 'saved'     && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 2 }}>FROM SAVED ADDRESSES</div>}
+                  {pickupSource === 'saved' && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 2 }}>FROM SAVED ADDRESSES</div>}
                   {!pickupSource && !pickupReady && <div className="body-xs" style={{ color: 'var(--text-tertiary)', marginTop: 2 }}>Where to collect the parcel from</div>}
                 </div>
               </div>
@@ -2085,7 +2089,7 @@ export default function PlaceOrderPage() {
                 <div>
                   <div className="label-sm">Drop Address</div>
                   {dropSource === 'receiver' && <div style={{ fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 2 }}>✓ RECEIVER'S PREFERRED DROP</div>}
-                  {dropSource === 'sender'   && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 2 }}>FROM YOUR SAVED ADDRESSES</div>}
+                  {dropSource === 'sender' && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 2 }}>FROM YOUR SAVED ADDRESSES</div>}
                   {!dropSource && !dropReady && <div className="body-xs" style={{ color: 'var(--text-tertiary)', marginTop: 2 }}>{receiverFound ? 'No preferred drop — set one below.' : 'Enter the drop address.'}</div>}
                 </div>
               </div>
@@ -2270,11 +2274,11 @@ export default function PlaceOrderPage() {
               catalogSizes.forEach((s, i) => {
                 const key = getCatalogKey(s);
                 sizeMap[key] = {
-                  name:   getCatalogName(s),
+                  name: getCatalogName(s),
                   weight: typeof s !== 'string' ? `${s.weightMin}–${s.weightMax} kg` : '',
-                  dim:    (typeof s !== 'string' && s.dimensions) ? `${s.dimensions.width}W×${s.dimensions.length}L×${s.dimensions.height}H cm` : null,
-                  order:  i,
-                  color:  ['#64748b', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444'][i % 5],
+                  dim: (typeof s !== 'string' && s.dimensions) ? `${s.dimensions.width}W×${s.dimensions.length}L×${s.dimensions.height}H cm` : null,
+                  order: i,
+                  color: ['#64748b', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444'][i % 5],
                 };
               });
               const grouped = items.reduce((acc, item) => {
@@ -2292,9 +2296,9 @@ export default function PlaceOrderPage() {
                     <span className="label-sm">Items ({totalItemCount} total)</span>
                   </div>
                   {rows.map((size, idx) => {
-                    const g    = grouped[size];
+                    const g = grouped[size];
                     const meta = sizeMap[size] || { name: size, weight: '', dim: null, color: '#0ea5e9' };
-                    const c    = meta.color;
+                    const c = meta.color;
                     const abbr = meta.name.length <= 2 ? meta.name.toUpperCase() : meta.name.substring(0, 2).toUpperCase();
                     return (
                       <div key={size} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: idx < rows.length - 1 ? '1px solid var(--border)' : 'none' }}>
@@ -2369,10 +2373,10 @@ export default function PlaceOrderPage() {
               {showOffers && activeOffers.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {activeOffers.map(o => {
-                    const eligible  = o.eligible !== false;
+                    const eligible = o.eligible !== false;
                     const isApplied = offerApplied?.code === o.offerCode;
                     const isSelected = !isApplied && offerCode === o.offerCode;
-                    const discount  = o.offerType === 'PERCENTAGE'
+                    const discount = o.offerType === 'PERCENTAGE'
                       ? `${o.discountValue}% off${o.maxDiscountAmount > 0 ? ` · max ₹${o.maxDiscountAmount}` : ''}`
                       : `₹${o.discountValue} off`;
                     return (
@@ -2450,8 +2454,8 @@ export default function PlaceOrderPage() {
             <div className="card">
               <div className="label-sm" style={{ marginBottom: 12 }}>Payment Method</div>
               {[
-                { mode: 'RAZORPAY', icon: <CreditCard size={17} />, title: 'Pay Online',        sub: 'UPI, Cards, Net Banking, Wallets' },
-                { mode: 'COD',      icon: <Wallet size={17} />,     title: 'Cash on Delivery',  sub: codBlocked ? 'Not available — low Customer Value score' : 'Pay when parcel is picked up' },
+                { mode: 'RAZORPAY', icon: <CreditCard size={17} />, title: 'Pay Online', sub: 'UPI, Cards, Net Banking, Wallets' },
+                { mode: 'COD', icon: <Wallet size={17} />, title: 'Cash on Delivery', sub: codBlocked ? 'Not available — low Customer Value score' : 'Pay when parcel is picked up' },
               ].map(({ mode, icon, title, sub }) => {
                 const blocked = mode === 'COD' && codBlocked;
                 return (
@@ -2530,11 +2534,11 @@ export default function PlaceOrderPage() {
                 <div className="card" style={{ marginBottom: 12 }}>
                   <div className="label-sm" style={{ marginBottom: 12 }}>Order Details</div>
                   {[
-                    { label: 'Sender',        val: `${senderFirstName} ${senderLastName} · ${senderPhone}`.trim() },
-                    { label: 'Receiver',      val: `${firstName} ${lastName} · +91${rawPhone}`.trim() },
-                    { label: 'Items',         val: `${items.length} item${items.length !== 1 ? 's' : ''} · ${items.map(i => i.name).filter(Boolean).join(', ')}` },
+                    { label: 'Sender', val: `${senderFirstName} ${senderLastName} · ${senderPhone}`.trim() },
+                    { label: 'Receiver', val: `${firstName} ${lastName} · +91${rawPhone}`.trim() },
+                    { label: 'Items', val: `${items.length} item${items.length !== 1 ? 's' : ''} · ${items.map(i => i.name).filter(Boolean).join(', ')}` },
                     { label: 'Self Handling', val: isSelfHandling ? 'Yes — hand over to rider' : 'No' },
-                    { label: 'Payment',       val: payMode === 'RAZORPAY' ? 'Online (Razorpay)' : 'Cash on Delivery' },
+                    { label: 'Payment', val: payMode === 'RAZORPAY' ? 'Online (Razorpay)' : 'Cash on Delivery' },
                     ...(offerApplied ? [{ label: 'Offer', val: offerApplied.code }] : []),
                   ].map(({ label, val }) => (
                     <div key={label} className="summary-row">
