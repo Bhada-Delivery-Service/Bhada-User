@@ -1434,8 +1434,10 @@ export default function PlaceOrderPage() {
 
   /* ─── Item helpers — stable with useCallback ─── */
   const updateItem = useCallback((idx, updated) => {
-    setItems(prev => { const n = [...prev]; n[idx] = updated; return n; });
-  }, []);
+  setItems(prev => { const n = [...prev]; n[idx] = updated; return n; });
+  // Jab bhi koi item update ho, error clear karo
+  setError('');
+}, []);
 
   const deleteItem = useCallback((idx) => {
     setItems(prev => prev.filter((_, i) => i !== idx));
