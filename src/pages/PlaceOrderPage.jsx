@@ -1111,7 +1111,7 @@ const ItemCard = memo(function ItemCard({
                   )}
                 </div>
               ))}
-            </div>
+            </div>  
 
             {/* Item Images */}
             <div className="form-group">
