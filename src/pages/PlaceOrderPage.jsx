@@ -1090,18 +1090,7 @@ const ItemCard = memo(function ItemCard({
                         ))}
                       </select>
                     )
-                   : <input
-    className="input"
-    type={type}
-    min={min}
-    value={item[key] === 0 ? '' : item[key]}
-    onChange={e => onChange({ ...item, [key]: e.target.value === '' ? '' : +e.target.value })}
-    onFocus={e => e.target.select()}
-    onBlur={e => {
-      const v = +e.target.value;
-      onChange({ ...item, [key]: (!v || v < 1) ? 1 : v });
-    }}
-  />
+                    : <input className="input" type={type} min={min} value={item[key]} onChange={e => onChange({ ...item, [key]: +e.target.value })} />
                   }
                   {key === 'size' && sizeObj && typeof sizeObj !== 'string' && (
                     <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4, fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
