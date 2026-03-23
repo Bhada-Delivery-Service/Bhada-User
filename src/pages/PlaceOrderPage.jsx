@@ -1921,14 +1921,15 @@ export default function PlaceOrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">First Name *</label>
-                  <input className="input" placeholder="Rahul" value={senderFirstName} onChange={e => setSenderFirstName(e.target.value)} />
+<input className="input" placeholder="Rahul" value={firstName} 
+  onChange={e => { setFirstName(e.target.value); setError(''); }} />
                   {senderFirstName.trim().length > 0 && senderFirstName.trim().length < 2 && (
                     <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3 }}>Too short</div>
                   )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Last Name</label>
-                  <input className="input" placeholder="Sharma" value={senderLastName} onChange={e => setSenderLastName(e.target.value)} />
+<input className="input" placeholder="Sharma" value={senderFirstName} onChange={e => { setSenderFirstName(e.target.value); setError(''); }} />
                 </div>
               </div>
               {senderLoading && (
@@ -1960,11 +1961,12 @@ export default function PlaceOrderPage() {
                       className="input" type="tel" inputMode="numeric" placeholder="98765 43210"
                       style={{ paddingLeft: 44 }}
                       value={rawPhone}
-                      onChange={e => {
-                        const v = e.target.value.replace(/\D/g, '').slice(0, 10);
-                        setRawPhone(v);
-                        if (v !== rawPhone) { setLookupDone(false); setReceiverFound(false); setLookupError(''); setDropSource(''); setDrop({ ...EMPTY_ADDR }); }
-                      }}
+                     onChange={e => {
+  const v = e.target.value.replace(/\D/g, '').slice(0, 10);
+  setRawPhone(v);
+  setError('');
+  if (v !== rawPhone) { setLookupDone(false); setReceiverFound(false); setLookupError(''); setDropSource(''); setDrop({ ...EMPTY_ADDR }); }
+}}
                       onKeyDown={e => { if (e.key === 'Enter' && rawPhone.length === 10) lookupReceiver(); }}
                     />
                   </div>
@@ -2008,11 +2010,11 @@ export default function PlaceOrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">First Name *</label>
-                  <input className="input" placeholder="Rahul" value={firstName} onChange={e => setFirstName(e.target.value)} />
+              <input className="input" placeholder="Rahul" value={firstName} onChange={e => { setFirstName(e.target.value); setError(''); }} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Last Name</label>
-                  <input className="input" placeholder="Sharma" value={lastName} onChange={e => setLastName(e.target.value)} />
+          <input className="input" placeholder="Sharma" value={firstName} onChange={e => { setFirstName(e.target.value); setError(''); }} />
                 </div>
               </div>
             </div>
