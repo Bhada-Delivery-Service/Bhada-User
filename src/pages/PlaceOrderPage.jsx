@@ -1365,16 +1365,15 @@ export default function PlaceOrderPage() {
   };
 
   const goBack = () => { 
-    setError(''); 
-    if (step === 5) {
-      // Keep draftOrder & billing intact so we reuse the same draft if user comes back.
-      // Only clear offer — user may want to change it after editing items.
-      // isSelfHandling intentionally NOT reset either.
-      setOfferApplied(null);
-      setOfferCode('');
-    }
-    if (step > 0) setStep(s => s - 1); else navigate(-1); 
-  };
+  setError('');
+  // Agar order place ho gaya hai — sidha home page pe jaao
+  if (placedOrder) { navigate('/', { replace: true }); return; }
+  if (step === 5) {
+    setOfferApplied(null);
+    setOfferCode('');
+  }
+  if (step > 0) setStep(s => s - 1); else navigate(-1); 
+};
   const applyToPickup = (saved) => { setPickup(addrFromSaved(saved)); setPickupSource('saved'); setAvailability(null); setEditingPickup(false); setShowPickupSheet(false); };
   const applyToDrop   = (saved) => { setDrop(addrFromSaved(saved)); setDropSource('sender'); setAvailability(null); setEditingDrop(false); setShowDropSheet(false); };
 
