@@ -1695,11 +1695,12 @@ export default function PlaceOrderPage() {
     placedOrder, payMode, placeOrderOnline, placeOrderCOD, navigate,
   ]);
 
-  const goBack = useCallback(() => {
-    setError('');
-    if (step === 5) { setOfferApplied(null); setOfferCode(''); }
-    if (step > 0) setStep(s => s - 1); else navigate(-1);
-  }, [step, navigate]);
+ const goBack = useCallback(() => {
+  setError('');
+  if (placedOrder) { navigate('/', { replace: true }); return; }
+  if (step === 5) { setOfferApplied(null); setOfferCode(''); }
+  if (step > 0) setStep(s => s - 1); else navigate(-1);
+}, [step, placedOrder, navigate]);
 
   const applyToPickup = useCallback((saved) => {
     setPickup(addrFromSaved(saved)); setPickupSource('saved');
