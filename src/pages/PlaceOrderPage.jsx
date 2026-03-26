@@ -1330,6 +1330,7 @@ export default function PlaceOrderPage() {
       const { data } = await ordersAPI.getReceiverInfo(phone);
       const info = data.data || data;
       setLookupDone(true);
+       setError('');
       if (info.found) {
         setReceiverFound(true);
         if (!firstName.trim() && info.firstName) setFirstName(info.firstName);
@@ -1922,7 +1923,7 @@ export default function PlaceOrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">First Name *</label>
-                  <input className="input" placeholder="Rahul" value={firstName}
+                  <input className="input" placeholder="Rahul" value={senderFirstName}
                     onChange={e => { setFirstName(e.target.value); setError(''); }} />
                   {senderFirstName.trim().length > 0 && senderFirstName.trim().length < 2 && (
                     <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3 }}>Too short</div>
@@ -1930,7 +1931,7 @@ export default function PlaceOrderPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Last Name</label>
-                  <input className="input" placeholder="Sharma" value={senderFirstName} onChange={e => { setSenderFirstName(e.target.value); setError(''); }} />
+                  <input className="input" placeholder="Sharma" value={senderLastName} onChange={e => { setSenderLastName(e.target.value); setError(''); }} />
                 </div>
               </div>
               {senderLoading && (
@@ -2015,7 +2016,7 @@ export default function PlaceOrderPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Last Name</label>
-                  <input className="input" placeholder="Sharma" value={firstName} onChange={e => { setFirstName(e.target.value); setError(''); }} />
+                  <input className="input" placeholder="Sharma" value={lastName} onChange={e => { setLastName(e.target.value); setError(''); }} />
                 </div>
               </div>
             </div>
